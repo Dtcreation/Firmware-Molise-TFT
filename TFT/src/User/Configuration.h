@@ -96,7 +96,7 @@
 #define MARLIN_FNCOLOR 0  // Default: 0
 
 // Text displayed at the top of the TFT in Marlin Mode
-#define MARLIN_BANNER_TEXT "LCD12864 Emulator"  // Default: "LCD12864 Emulator"
+#define MARLIN_BANNER_TEXT "Sidewinder X1"  // Default: "LCD12864 Emulator"
 
 // Show banner text at the top of the TFT in Marlin Mode
 #define MARLIN_SHOW_BANNER true  // To enabled: true | To disabled: false (Default: true)
@@ -190,9 +190,9 @@
 #define X_MIN_POS   0
 #define Y_MIN_POS   0
 #define Z_MIN_POS   0
-#define X_MAX_POS 220
-#define Y_MAX_POS 220
-#define Z_MAX_POS 250
+#define X_MAX_POS 300
+#define Y_MAX_POS 300
+#define Z_MAX_POS 400
 
 // Pause Settings
 #define NOZZLE_PAUSE_RETRACT_LENGTH               15  // (mm)
@@ -466,8 +466,8 @@
 //
 
 // Filament runout detection
-#define FIL_RUNOUT_INVERTING true  // Set to false to invert the logic of the sensor. (Default: true)
-#define FIL_NOISE_THRESHOLD  100   // (MilliSeconds) Pause print when filament runout is detected atleast for this duration.
+#define FIL_RUNOUT_INVERTING false  // Set to false to invert the logic of the sensor. (Default: true)
+#define FIL_NOISE_THRESHOLD  400   // (MilliSeconds) Pause print when filament runout is detected atleast for this duration.
 
 // Smart filament runout detection
 // For use with an encoder disc that toggles runout pin as filament moves.
