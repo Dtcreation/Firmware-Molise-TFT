@@ -10,9 +10,10 @@
     #define STRING_PERSISTENT_INFO        "Zobrazení stavových ikon"
     #define STRING_FILE_LIST_MODE         "Soubory jako seznam"
     #define STRING_ACK_NOTIFICATION       "Styl oznámení ACK"
+    #define STRING_EMULATE_M600           "Emulate M600"
     #define STRING_SERIAL_ALWAYS_ON       "Seriový port vždy ON"
-    #define STRING_MARLIN_SHOW_TITLE      "Zobrazit tytulek Marlin"
     #define STRING_MARLIN_FULLSCREEN      "Fullscreen režim Marlin"
+    #define STRING_MARLIN_SHOW_TITLE      "Zobrazit tytulek Marlin"
     #define STRING_MARLIN_TYPE            "Typ Marlin Modu"
     #define STRING_MOVE_SPEED             "Rychlost pohybu X Y Z"
     #define STRING_AUTO_LOAD_LEVELING     "Automaticky Leveling"
@@ -272,6 +273,7 @@
     #define STRING_ABL_SLOT3              "Slot 3"
     #define STRING_ABL_SLOT_EEPROM        "Zapamatuj si slot\nrestart? (Uložit EEPROM)"
     #define STRING_ABL_Z                  "Z-Slábnutí"
+    #define STRING_LEVELCORNER            "Level corner" 
     #define STRING_P_OFFSET               "P Offset"
     #define STRING_H_OFFSET               "H Offset"
     #define STRING_DISTANCE               "Vzdálenost"
@@ -344,5 +346,6 @@
     #define STRING_EXT_TEMPLOW            "Teplota hotendu je pod\nminimální teplotou (%d℃)."
     #define STRING_HEAT_HOTEND            "Zahřát hotend na %d℃?"
     #define STRING_Z_ALIGN                "Z Align"
+    #define STRING_MACROS                 "Macros"
 
 #endif
