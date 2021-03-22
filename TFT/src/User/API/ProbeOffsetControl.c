@@ -12,25 +12,31 @@ void probeOffsetEnable(bool skipZOffset)
   probeHeightEnable();  // temporary disable software endstops
 
   // Z offset gcode sequence start
-  mustStoreCmd("G28\n");                          // home printer
-  probeHeightStop(infoSettings.z_raise_probing);  // raise nozzle
+  mustStoreCmd("G28\n");  // home printer
 
   if (infoSettings.xy_offset_probing)  // if HW allows nozzle to reach XY probing point
   {
-    mustStoreCmd("G91\n");                                  // set relative position mode
-    mustStoreCmd("G1 X%.2f Y%.2f\n",
-                 getParameter(P_PROBE_OFFSET, X_STEPPER),
-                 getParameter(P_PROBE_OFFSET, Y_STEPPER));  // move nozzle to XY probing point and set feedrate
-  }
+    probeHeightStop();  // raise nozzle
 
-  if (skipZOffset)
-  {
-    probeHeightStart(-probeOffsetGetValue());  // lower nozzle to probing Z0 point
-    probeOffsetSetValue(0.0f);                 // reset Z offset in order probing Z0 matches absolute Z0 point
+    mustStoreCmd("G91\n");  // set relative position mode
+    mustStoreCmd("G1 X%.2f Y%.2f F%d\n",
+                 getParameter(P_PROBE_OFFSET, X_STEPPER),
+                 getParameter(P_PROBE_OFFSET, Y_STEPPER),
+                 infoSettings.level_feedrate[FEEDRATE_XY]);  // move nozzle to XY probing point and set feedrate
   }
   else
   {
+    mustStoreCmd("G1 F%d\n", infoSettings.level_feedrate[FEEDRATE_XY]);  // set feedrate
+  }
+
+  if (!skipZOffset)
+  {
     probeHeightStart(0.0f);  // lower nozzle to absolute Z0 point
+  }
+  else
+  {
+    probeHeightStart(-probeOffsetGetValue());  // lower nozzle to probing Z0 point
+    probeOffsetSetValue(0.0f);                 // reset Z offset in order probing Z0 matches absolute Z0 point
   }
 
   probeHeightRelative();  // set relative position mode
@@ -42,9 +48,9 @@ void probeOffsetDisable(void)
   probe_offset_enabled = false;
 
   // Z offset gcode sequence stop
-  mustStoreCmd("G28\n");                          // home printer
-  probeHeightStop(infoSettings.z_raise_probing);  // raise nozzle
-  probeHeightAbsolute();                          // set absolute position mode
+  mustStoreCmd("G28\n");  // home printer
+  probeHeightStop();      // raise nozzle
+  probeHeightAbsolute();  // set absolute position mode
 
   probeHeightDisable();  // restore original software endstops state
 }
@@ -61,7 +67,6 @@ float probeOffsetSetValue(float value)
   mustStoreCmd("M851 Z%.2f\n", value);
   mustStoreCmd("M851\n");  // needed by probeOffsetGetValue() to retrieve the new value
   z_offset_value = value;
-
   return z_offset_value;
 }
 
@@ -69,7 +74,6 @@ float probeOffsetSetValue(float value)
 float probeOffsetGetValue(void)
 {
   z_offset_value = getParameter(P_PROBE_OFFSET, Z_STEPPER);
-
   return z_offset_value;
 }
 
@@ -84,7 +88,6 @@ float probeOffsetResetValue(void)
   z_offset_value = PROBE_Z_OFFSET_DEFAULT_VALUE;
   mustStoreCmd("M851 Z%.2f\n", z_offset_value);  // set Z offset value
   mustStoreCmd("G1 Z%.2f\n", -unit);             // move nozzle
-
   return z_offset_value;
 }
 

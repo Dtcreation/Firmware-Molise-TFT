@@ -16,7 +16,8 @@ static inline void mblStart(void)
   probeHeightEnable();  // temporary disable software endstops
 
   // MBL gcode sequence start
-  mustStoreCmd("G29 S1\n");                       // home and move to first point for Z height adjustment
+  mustStoreCmd("G29 S1\n");  // home and move to first point for Z height adjustment
+
   probeHeightStart(PROBE_HEIGHT_INITIAL_HEIGHT);  // lower nozzle to provided absolute Z point
   probeHeightRelative();                          // set relative position mode
 }
@@ -27,7 +28,7 @@ static inline void mblStop(void)
   mblRunning = false;
 
   if (infoMachineSettings.zProbe == ENABLED)
-    probeHeightStop(infoSettings.level_z_raise);  // raise nozzle
+    probeHeightStop();  // raise nozzle
 
   probeHeightAbsolute();  // set absolute position mode
 
@@ -79,14 +80,11 @@ void mblUpdateStatus(bool succeeded)
 }
 
 // Show an error notification
-void mblNotifyError(bool isStarted)
+void mblNotifyError(void)
 {
   LABELCHAR(tempMsg, LABEL_MBL);
 
-  if (!isStarted)
-    sprintf(&tempMsg[strlen(tempMsg)], " %s", textSelect(LABEL_OFF));
-  else
-    sprintf(&tempMsg[strlen(tempMsg)], " %s", textSelect(LABEL_ON));
+  sprintf(&tempMsg[strlen(tempMsg)], " %s", textSelect(LABEL_OFF));
 
   addToast(DIALOG_TYPE_ERROR, tempMsg);
 }
@@ -97,23 +95,19 @@ void mblDrawHeader(uint8_t *point)
 
   if (point != NULL)
   {
-    sprintf(tempstr, "P%-4d", *point);
+    sprintf(tempstr, "P%d   ", *point);
 
     GUI_SetColor(infoSettings.sd_reminder_color);
   }
   else
   {
-    sprintf(tempstr, "%-15s", textSelect(LABEL_OFF));
+    sprintf(tempstr, "%s   ", textSelect(LABEL_OFF));
 
     GUI_SetColor(infoSettings.reminder_color);
   }
 
   GUI_DispString(exhibitRect.x0, exhibitRect.y0, (uint8_t *) tempstr);
-
   GUI_SetColor(infoSettings.font_color);
-  setLargeFont(true);
-  GUI_DispStringCenter((exhibitRect.x0 + exhibitRect.x1) >> 1, exhibitRect.y0, (uint8_t *)"mm");
-  setLargeFont(false);
 }
 
 void mblDrawValue(float val)
@@ -187,22 +181,15 @@ void menuMBL(void)
       // decrease Z height
       case KEY_ICON_0:
         if (!mblRunning)
-          mblNotifyError(false);
+          mblNotifyError();
         else
           probeHeightMove(unit, -1);
-        break;
-
-      case KEY_INFOBOX:
-        if (mblRunning)
-          mblNotifyError(true);
-        else
-          infoMenu.menu[++infoMenu.cur] = menuUnifiedHeat;
         break;
 
       // increase Z height
       case KEY_ICON_3:
         if (!mblRunning)
-          mblNotifyError(false);
+          mblNotifyError();
         else
           probeHeightMove(unit, 1);
         break;
@@ -219,7 +206,7 @@ void menuMBL(void)
       // reset Z height to 0
       case KEY_ICON_5:
         if (!mblRunning)
-          mblNotifyError(false);
+          mblNotifyError();
         else
           probeHeightMove(curValue, -1);
         break;
@@ -261,7 +248,7 @@ void menuMBL(void)
           if (encoderPosition)
           {
             if (!mblRunning)
-              mblNotifyError(false);
+              mblNotifyError();
             else
               probeHeightMove(unit, encoderPosition > 0 ? 1 : -1);
 

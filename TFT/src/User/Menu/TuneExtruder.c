@@ -8,20 +8,12 @@ static uint8_t curExtStep_index = 0;
 static uint8_t c_heater = NOZZLE0;
 
 // Show/draw temperature in heat menu
-void showExtrudeTemperature(uint8_t index, bool skip_header)
+void showExtrudeTemperature(uint8_t index)
 {
   char tempstr[20];
 
-  setLargeFont(true);
-
-  if (!skip_header)
-  {
-    sprintf(tempstr, "%-15s", heatDisplayID[index]);
-    setLargeFont(false);
-    GUI_DispString(exhibitRect.x0, exhibitRect.y0, (uint8_t *)tempstr);
-    setLargeFont(true);
-    GUI_DispStringCenter((exhibitRect.x0 + exhibitRect.x1) >> 1, exhibitRect.y0, (uint8_t *)"ºC");
-  }  
+  sprintf(tempstr, "%-15s", heatDisplayID[index]);
+  GUI_DispString(exhibitRect.x0, exhibitRect.y0, (uint8_t *)tempstr);
 
   sprintf(tempstr, "%4d/%-4d", heatGetCurrentTemp(index), heatGetTargetTemp(index));
   setLargeFont(true);
@@ -96,7 +88,7 @@ void menuTuneExtruder(void)
   heatSetUpdateSeconds(TEMPERATURE_QUERY_FAST_SECONDS);
 
   menuDrawPage(&tuneExtruderItems);
-  showExtrudeTemperature(c_heater, false);
+  showExtrudeTemperature(c_heater);
 
   #if LCD_ENCODER_SUPPORT
     encoderPosition = 0;
@@ -119,14 +111,14 @@ void menuTuneExtruder(void)
           char titlestr[30];
           sprintf(titlestr, "Min:0 | Max:%i", infoSettings.max_temp[c_heater]);
 
-          int16_t val = numPadInt((uint8_t *) titlestr, actTarget, infoSettings.min_ext_temp, false);
+          int16_t val = numPadInt((uint8_t *) titlestr, actTarget, 0, false);
           val = NOBEYOND(0, val, infoSettings.max_temp[c_heater]);
 
           if (val != actTarget)
             heatSetTargetTemp(c_heater, val);
 
           menuDrawPage(&tuneExtruderItems);
-          showExtrudeTemperature(c_heater, false);
+          showExtrudeTemperature(c_heater);
         }
         break;
 
@@ -141,7 +133,7 @@ void menuTuneExtruder(void)
         }
         while (!heaterIsValid(c_heater));
 
-        showExtrudeTemperature(c_heater, false);
+        showExtrudeTemperature(c_heater);
         break;
 
       case KEY_ICON_5:
@@ -204,7 +196,7 @@ void menuTuneExtruder(void)
     {
       lastCurrent = actCurrent;
       lastTarget = actTarget;
-      showExtrudeTemperature(c_heater, true);
+      showExtrudeTemperature(c_heater);
     }
 
     loopProcess();

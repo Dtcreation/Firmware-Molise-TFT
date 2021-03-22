@@ -11,8 +11,6 @@ extern "C" {
 
 static const char errormagic[] = "Error:";
 static const char echomagic[] = "echo:";
-static const char warningmagic[] = "Warning:";  // RRF warning
-static const char messagemagic[] = "message";   // RRF message in Json format
 
 #define ACK_MAX_SIZE 512
 
@@ -49,7 +47,6 @@ typedef struct
   const char *const msg;
 } ECHO;
 
-bool dmaL1NotEmpty(uint8_t port);
 void setCurrentAckSrc(uint8_t src);
 void parseACK(void);
 void parseRcvGcode(void);

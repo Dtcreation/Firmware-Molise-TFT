@@ -26,15 +26,16 @@ void menuBedLeveling(void)
       {ICON_LEVELING,                LABEL_ABL},
       {ICON_MESH_EDITOR,             LABEL_MESH_EDITOR},
       {ICON_BACKGROUND,              LABEL_BACKGROUND},
-      {ICON_LEVELING_OFF,            LABEL_BL_DISABLE},
-      {ICON_Z_FADE,                  LABEL_ABL_Z},
       {ICON_BACKGROUND,              LABEL_BACKGROUND},
-      {ICON_HEAT_FAN,                LABEL_UNIFIEDHEAT},
+      {ICON_Z_FADE,                  LABEL_ABL_Z},
+      {ICON_PROBE_OFFSET,            LABEL_H_OFFSET},
+      {ICON_BACKGROUND,              LABEL_BACKGROUND},
       {ICON_BACK,                    LABEL_BACK},
     }
   };
 
   KEY_VALUES key_num = KEY_IDLE;
+  void (*menuBL)(void) = menuABL;
   int8_t levelStateOld = -1;
 
   switch (infoMachineSettings.leveling)
@@ -52,10 +53,18 @@ void menuBedLeveling(void)
     case BL_MBL:
       bedLevelingItems.title.index = LABEL_MBL_SETTINGS;
       bedLevelingItems.items[0].label.index = LABEL_MBL;
+
+      menuBL = menuMBL;
       break;
 
     default:
       break;
+  }
+
+  if (infoSettings.z_steppers_alignment)
+  {
+    bedLevelingItems.items[2].icon = ICON_Z_ALIGN;
+    bedLevelingItems.items[2].label.index = LABEL_Z_ALIGN;
   }
 
   if (getParameter(P_ABL_STATE, 0) == ENABLED)
@@ -63,11 +72,16 @@ void menuBedLeveling(void)
     bedLevelingItems.items[3].icon = ICON_LEVELING_ON;
     bedLevelingItems.items[3].label.index = LABEL_BL_ENABLE;
   }
+  else
+  {
+    bedLevelingItems.items[3].icon = ICON_LEVELING_OFF;
+    bedLevelingItems.items[3].label.index = LABEL_BL_DISABLE;
+  }
 
   if (infoMachineSettings.zProbe == ENABLED)
   {
-    bedLevelingItems.items[5].icon = ICON_PROBE_OFFSET;
-    bedLevelingItems.items[5].label.index = LABEL_P_OFFSET;
+    bedLevelingItems.items[6].icon = ICON_PROBE_OFFSET;
+    bedLevelingItems.items[6].label.index = LABEL_P_OFFSET;
   }
 
   menuDrawPage(&bedLevelingItems);
@@ -78,11 +92,16 @@ void menuBedLeveling(void)
     switch (key_num)
     {
       case KEY_ICON_0:
-        infoMenu.menu[++infoMenu.cur] = menuBedLevelingLayer2;
+        infoMenu.menu[++infoMenu.cur] = menuBL;
         break;
 
       case KEY_ICON_1:
         infoMenu.menu[++infoMenu.cur] = menuMeshEditor;
+        break;
+
+      case KEY_ICON_2:
+        if (infoSettings.z_steppers_alignment)
+          storeCmd("G34\n");
         break;
 
       case KEY_ICON_3:
@@ -105,6 +124,12 @@ void menuBedLeveling(void)
       }
 
       case KEY_ICON_5:
+        storeCmd("M206\n");
+        zOffsetSetMenu(false);  // use Home Offset menu
+        infoMenu.menu[++infoMenu.cur] = menuZOffset;
+        break;
+
+      case KEY_ICON_6:
         if (infoMachineSettings.zProbe == ENABLED)
         {
           storeCmd("M851\n");
@@ -113,20 +138,7 @@ void menuBedLeveling(void)
         }
         break;
 
-      case KEY_ICON_6:
-        infoMenu.menu[++infoMenu.cur] = menuUnifiedHeat;
-        break;
-
       case KEY_ICON_7:
-        for (uint8_t i = 0; i < MAX_HEATER_COUNT; i++)
-        {
-          if (heatGetTargetTemp(i) > 0)
-          {
-            setDialogText(LABEL_WARNING, LABEL_HEATERS_ON, LABEL_CONFIRM, LABEL_CANCEL);
-            showDialog(DIALOG_TYPE_QUESTION, heatCoolDown, NULL, NULL);
-            break;
-          }
-        }
         infoMenu.cur--;
         break;
 
