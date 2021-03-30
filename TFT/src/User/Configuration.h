@@ -422,7 +422,7 @@
  *  POPUP: Display a popup window for user confirmation.
  *  TOAST: A Toast notification is displayed for few seconds. No user interaction is needed.
  */
-#define ACK_NOTIFICATION_STYLE 1  // Default: 1
+#define ACK_NOTIFICATION_STYLE 2  // Default: 1
 
 // Fan speed as a percentage instead of PWM value
 #define SHOW_FAN_PERCENTAGE true  // To enabled: true | To disabled: false (Default: true)
