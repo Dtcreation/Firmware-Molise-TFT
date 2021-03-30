@@ -36,13 +36,15 @@ void coordinateSetAxisTarget(AXIS axis, float position);
 uint32_t coordinateGetFeedRate(void);
 void coordinateSetFeedRate(uint32_t feedrate);
 void coordinateGetAll(COORDINATE *tmp);
-void coordinateSetExtruderActualSteps(float steps);
 float coordinateGetExtruderActual(void);
+void coordinateSetExtruderActualSteps(float steps);
 float coordinateGetAxisActual(AXIS axis);
 void coordinateSetAxisActual(AXIS axis, float position);
 void coordinateQuerySetWait(bool wait);
 void coordinateQuery(void);
-
+void  SetLevelCornerPosition(int point, float position);
+float GetLevelCornerPosition(int point);
+  
 #ifdef __cplusplus
 }
 #endif

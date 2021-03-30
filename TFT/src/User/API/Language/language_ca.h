@@ -10,9 +10,10 @@
     #define STRING_PERSISTENT_INFO        "Informació d'estat persistent"
     #define STRING_FILE_LIST_MODE         "Mode de visualització de fitxers"
     #define STRING_ACK_NOTIFICATION       "ACK notification style"
+    #define STRING_EMULATE_M600           "Emulate M600"
     #define STRING_SERIAL_ALWAYS_ON       "Serial Always ON"
-    #define STRING_MARLIN_SHOW_TITLE      "Marlin Mode Title Support"
     #define STRING_MARLIN_FULLSCREEN      "Mode Marlin a pantalla completa"
+    #define STRING_MARLIN_SHOW_TITLE      "Marlin Mode Title Support"
     #define STRING_MARLIN_TYPE            "Marlin Mode Type"
     #define STRING_MOVE_SPEED             "Velocitat de moviment(X Y Z)"
     #define STRING_AUTO_LOAD_LEVELING     "Auto Save Load Leveling"
@@ -272,6 +273,7 @@
     #define STRING_ABL_SLOT3              "Ranura 3"
     #define STRING_ABL_SLOT_EEPROM        "Recordar la ranura per al proper\nreinici? (Guardar EEPROM)"
     #define STRING_ABL_Z                  "Z Fade"
+    #define STRING_LEVELCORNER            "L corner" 
     #define STRING_P_OFFSET               "P Offset"
     #define STRING_H_OFFSET               "H Offset"
     #define STRING_DISTANCE               "Distance"
@@ -344,5 +346,6 @@
     #define STRING_EXT_TEMPLOW            "Hotend temperature is below\nminimum temperature (%d℃)."
     #define STRING_HEAT_HOTEND            "Heat hotend to %d℃?"
     #define STRING_Z_ALIGN                "Z Align"
+    #define STRING_MACROS                 "Macros"
 
 #endif

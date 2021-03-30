@@ -10,9 +10,10 @@
     #define STRING_PERSISTENT_INFO        "Нагрев в инфостроке"
     #define STRING_FILE_LIST_MODE         "Файлы в режиме строк"
     #define STRING_ACK_NOTIFICATION       "ACK стиль уведомления"
+    #define STRING_EMULATE_M600           "Emulate M600"
     #define STRING_SERIAL_ALWAYS_ON       "Serial Always ON"
-    #define STRING_MARLIN_SHOW_TITLE      "Marlin Mode Title Support"
     #define STRING_MARLIN_FULLSCREEN      "Marlin на весь экран"
+    #define STRING_MARLIN_SHOW_TITLE      "Marlin Mode Title Support"
     #define STRING_MARLIN_TYPE            "Marlin Mode Type"
     #define STRING_MOVE_SPEED             "Скорость (X Y Z)"
     #define STRING_AUTO_LOAD_LEVELING     "Auto Save Load Leveling"
@@ -272,6 +273,7 @@
     #define STRING_ABL_SLOT3              "Ячейка 3"
     #define STRING_ABL_SLOT_EEPROM        "Восстановить из ячейки\nпри перезагрузке?\n(Сохранить в EEPROM)"
     #define STRING_ABL_Z                  "Z затухание"
+    #define STRING_LEVELCORNER            "L corner"
     #define STRING_P_OFFSET               "Отступ P"
     #define STRING_H_OFFSET               "Отступ H"
     #define STRING_DISTANCE               "Отступы"
@@ -344,5 +346,6 @@
     #define STRING_EXT_TEMPLOW            "Температура сопла ниже\nминимальной (%d℃)."
     #define STRING_HEAT_HOTEND            "Heat hotend to %d℃?"
     #define STRING_Z_ALIGN                "Z Align"
+    #define STRING_MACROS                 "Macros"
 
 #endif

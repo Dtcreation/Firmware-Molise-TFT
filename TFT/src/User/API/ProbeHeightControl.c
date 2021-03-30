@@ -35,19 +35,27 @@ void probeHeightDisable(void)
 }
 
 // Start probe height
-void probeHeightStart(float initialHeight)
+void probeHeightStart(float initialHeight, bool relativeHeight)
 {
-  mustStoreCmd("G90\n");                      // set absolute position mode
-  mustStoreCmd("G1 Z%.2f\n", initialHeight);  // move nozzle to provided absolute Z point
-  mustStoreCmd("G91\n");                      // set relative position mode
+  if (relativeHeight)
+    probeHeightRelative();                                // set relative position mode
+  else
+    probeHeightAbsolute();                                // set absolute position mode
+
+  mustStoreCmd("G1 Z%.2f F%d\n",
+               initialHeight,
+               infoSettings.level_feedrate[FEEDRATE_Z]);  // move nozzle to provided absolute Z point and set feedrate
+  probeHeightRelative();                                  // set relative position mode
 }
 
 // Stop probe height
-void probeHeightStop(void)
+void probeHeightStop(float raisedHeight)
 {
-  mustStoreCmd("G91\n");  // set relative position mode
-  mustStoreCmd("G1 Z%.2f F%d\n", infoSettings.level_z_raise, infoSettings.level_feedrate[FEEDRATE_Z]);  // raise Z and set feedrate
-  mustStoreCmd("G90\n");  // set absolute position mode
+  probeHeightRelative();                                  // set relative position mode
+  mustStoreCmd("G1 Z%.2f F%d\n",
+               raisedHeight,
+               infoSettings.level_feedrate[FEEDRATE_Z]);  // raise Z and set feedrate
+  probeHeightAbsolute();                                  // set absolute position mode
 }
 
 // Set probe height to relative position mode

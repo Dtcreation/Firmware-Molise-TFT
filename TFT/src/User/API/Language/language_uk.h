@@ -10,9 +10,10 @@
     #define STRING_PERSISTENT_INFO        "Нагрівання в інфостроці"
     #define STRING_FILE_LIST_MODE         "Файли в режимі рядків"
     #define STRING_ACK_NOTIFICATION       "ACK стиль повідомлення"
+    #define STRING_EMULATE_M600           "Emulate M600"
     #define STRING_SERIAL_ALWAYS_ON       "Serial Always ON"
-    #define STRING_MARLIN_SHOW_TITLE      "Marlin Mode Title Support"
     #define STRING_MARLIN_FULLSCREEN      "Marlin на весь екран"
+    #define STRING_MARLIN_SHOW_TITLE      "Marlin Mode Title Support"
     #define STRING_MARLIN_TYPE            "Marlin Mode Type"
     #define STRING_MOVE_SPEED             "Швидкість (X Y Z)"
     #define STRING_AUTO_LOAD_LEVELING     "Auto Save Load Leveling"
@@ -272,6 +273,7 @@
     #define STRING_ABL_SLOT3              "Слот 3"
     #define STRING_ABL_SLOT_EEPROM        "Пам'ятати слот \nпри перезавантаженні? \n(Зберегти в EEPROM)"
     #define STRING_ABL_Z                  "Z загасання"
+    #define STRING_LEVELCORNER            "L corner"
     #define STRING_P_OFFSET               "Відступ P"
     #define STRING_H_OFFSET               "Відступ H"
     #define STRING_DISTANCE               "Відступи"
@@ -344,5 +346,6 @@
     #define STRING_EXT_TEMPLOW            "Температура хотенду нижче\nмінімальної температури (%d℃)."
     #define STRING_HEAT_HOTEND            "Heat hotend to %d℃?"
     #define STRING_Z_ALIGN                "Z Align"
+    #define STRING_MACROS                 "Macros"
 
 #endif

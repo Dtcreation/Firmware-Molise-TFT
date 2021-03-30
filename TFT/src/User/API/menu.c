@@ -620,6 +620,31 @@ void showLiveInfo(uint8_t index, const LIVE_INFO * liveicon, const ITEM * item)
   GUI_RestoreColorDefault();
 }  //showLiveInfo
 
+//Show live info text on icons for LevelCorner
+void showLevelCornerLiveInfo(uint8_t index, uint8_t Levelindex, const LIVE_INFO * liveicon, const ITEM * item)
+{
+  const GUI_RECT *rect = curRect + ITEM_PER_PAGE + index;
+  GUI_ClearPrect(rect);
+  if (item != NULL) menuDrawIconOnly(item,index);
+  GUI_DispStringInPrect(rect, liveicon->lines[Levelindex].text);
+} //showLevelCornerLiveInfo
+
+//Show text on icons (used in LevelCorner with ICON_BLTOUCH unified)
+void showTextOnIcon(uint8_t index, uint8_t Levelindex, const LIVE_INFO * liveicon, const ITEM * item)
+{
+  if (item != NULL) menuDrawIconOnly(item,index);
+  GUI_SetColor(ORANGE);
+  GUI_SetTextMode(GUI_TEXTMODE_TRANS);
+  GUI_POINT loc;
+  loc.x = liveicon->lines[Levelindex].pos.x + curRect[index].x0 - 4;
+  loc.y = liveicon->lines[Levelindex].pos.y + curRect[index].y0 - 6;
+  setLargeFont(VAL_LARGE_FONT);
+  GUI_DispStringCenter(loc.x, loc.y, liveicon->lines[Levelindex].text);
+  GUI_SetColor(WHITE);
+  GUI_DispStringCenter(loc.x - 2, loc.y - 2, liveicon->lines[Levelindex].text);
+  GUI_RestoreColorDefault();
+} //showTextOnIcon
+
 //When there is a button value, the icon changes color and redraws
 void itemDrawIconPress(uint8_t position, uint8_t is_press)
 {
@@ -717,66 +742,75 @@ GUI_POINT getIconStartPoint(int index)
 }
 
 #ifdef SMART_HOME
-  #define LONG_TOUCH (LCD_CHANGE_MODE_INTERVALS / 3)
+  #define LONG_TOUCH (LCD_CHANGE_MODE_INTERVALS / 3)  // keep it lower than LCD_CHANGE_MODE_INTERVALS
   void loopCheckBack(void)
   {
     static bool longPress = false;
-    static bool firstCheck = false;
+    #ifdef HAS_EMULATOR
     static bool backHeld = false;
+    #endif
 
-    if (isPrinting())
-      return;
     if (!isPress())
     {
+      #ifdef HAS_EMULATOR
       backHeld = false;
+      #endif
       longPress = false;
+      #ifndef HAS_EMULATOR
+      LCD_ReadPen(0);  // reset TSC press timer
+      #endif
       return;
     }
+    if (isPrinting())  // no jump to main menu while printing
+      return;
     if (menuType != MENU_TYPE_ICON)
       return;
     if ((infoMenu.cur == 0) || (infoMenu.menu[infoMenu.cur] == menuMode))
       return;
+    #ifdef HAS_EMULATOR
     if (backHeld == true)  // prevent mode selection or screenshot if Back button is held
     {
       backHeld = LCD_ReadPen(0);
       return;
     }
+    #endif
+ 
     if (longPress == false)  // check if longpress already handled
     {
       if (LCD_ReadPen(LONG_TOUCH))  // check if TSC is pressed and held
       {
         longPress = true;
-        firstCheck = true;
-      }
-    }
-    if (firstCheck == true)  // do things only once if TSC is pressed and held
-    {
-      touchSound = false;
-      KEY_VALUES tempKey = KEY_IDLE;
-      if (infoMenu.menu[infoMenu.cur] == menuPrinting)
-      {
-        tempKey = Key_value(COUNT(rect_of_keySS), rect_of_keySS);
-      }
-      else
-      {
-        tempKey = Key_value(COUNT(rect_of_key), rect_of_key);
-      }
-      touchSound = true;
-
-      if (tempKey != KEY_IDLE)
-      {
-        if (curMenuItems->items[tempKey].label.index == LABEL_BACK)  // check if Back button is held
+        touchSound = false;
+        KEY_VALUES tempKey = KEY_IDLE;
+        if (infoMenu.menu[infoMenu.cur] == menuPrinting)
         {
-          BUZZER_PLAY(sound_ok);
-          backHeld = true;
-          infoMenu.menu[1] = infoMenu.menu[infoMenu.cur];
-          infoMenu.cur = 1;
-          if (infoMenu.menu[1] == menuPrinting)
-            clearInfoFile();
+          tempKey = Key_value(COUNT(rect_of_keySS), rect_of_keySS);
+        }
+        else
+        {
+          tempKey = Key_value(COUNT(rect_of_key), rect_of_key);
+        }
+        touchSound = true;
+
+        if (tempKey != KEY_IDLE)
+        {
+          if (curMenuItems->items[tempKey].label.index != LABEL_BACK)  // check if Back button is held
+          {
+            return;
+          }
+          else
+          {
+            BUZZER_PLAY(sound_ok);
+            #ifdef HAS_EMULATOR
+            backHeld = true;
+            #endif
+            infoMenu.menu[1] = infoMenu.menu[infoMenu.cur];  // prepare menu tree for jump to 0
+            infoMenu.cur = 1;
+            if (infoMenu.menu[1] == menuPrinting)
+              clearInfoFile();
+          }
         }
       }
-
-      firstCheck = false;
     }
   }
 #endif //SMART_HOME

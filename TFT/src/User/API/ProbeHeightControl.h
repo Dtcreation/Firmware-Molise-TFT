@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include <stdbool.h>
 #include <stdint.h>
 
 // Enable probe height
@@ -16,10 +17,10 @@ void probeHeightEnable(void);
 void probeHeightDisable(void);
 
 // Start probe height
-void probeHeightStart(float initialHeight);
+void probeHeightStart(float initialHeight, bool relativeHeight);
 
 // Stop probe height
-void probeHeightStop(void);
+void probeHeightStop(float raisedHeight);
 
 // Set probe height to relative position mode
 void probeHeightRelative(void);

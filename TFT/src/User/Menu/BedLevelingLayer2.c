@@ -44,17 +44,16 @@ void menuBedLevelingLayer2(void)
 
   if (infoMachineSettings.zProbe == ENABLED)
   {
+    bedLevelingLayer2Items.items[3].icon = ICON_LEVELCORNER;
+    bedLevelingLayer2Items.items[3].label.index = LABEL_LEVELCORNER;
+    
     if (infoSettings.touchmi_sensor != 0)
     {
-      bedLevelingLayer2Items.items[3].icon = ICON_LEVELCORNER;
-      bedLevelingLayer2Items.items[3].label.index = LABEL_LEVELCORNER;
       bedLevelingLayer2Items.items[4].icon = ICON_NOZZLE;
       bedLevelingLayer2Items.items[4].label.index = LABEL_TOUCHMI;
     }
     else
     {
-      bedLevelingLayer2Items.items[3].icon = ICON_LEVELCORNER;
-      bedLevelingLayer2Items.items[3].label.index = LABEL_LEVELCORNER;
       bedLevelingLayer2Items.items[4].icon = ICON_BLTOUCH;
       bedLevelingLayer2Items.items[4].label.index = LABEL_BLTOUCH;
     }
@@ -91,7 +90,7 @@ void menuBedLevelingLayer2(void)
         break;
        
       case KEY_ICON_3:    
-          infoMenu.menu[++infoMenu.cur] = menuLevelCorner;
+        infoMenu.menu[++infoMenu.cur] = menuLevelCorner;
         break;
 
       case KEY_ICON_4:
@@ -107,6 +106,7 @@ void menuBedLevelingLayer2(void)
       case KEY_ICON_5:
         if (infoMachineSettings.zProbe == ENABLED && infoSettings.z_steppers_alignment)
           storeCmd("G34\n");
+          storeCmd("M18 S0 X Y Z\n");
         break;
 
       case KEY_ICON_7:

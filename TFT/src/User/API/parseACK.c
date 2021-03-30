@@ -2,14 +2,14 @@
 #include "parseACK.h"
 
 char dmaL2Cache[ACK_MAX_SIZE];
-static uint16_t ack_index=0;
+static uint16_t ack_index = 0;
 static uint8_t ack_cur_src = SERIAL_PORT;
 
 bool portSeen[_UART_CNT] = {false, false, false, false, false, false};
 
 struct HOST_ACTION
 {
-  char prompt_begin[20];
+  char prompt_begin[30];
   char prompt_button1[20];
   char prompt_button2[20];
   bool prompt_show;         //Show popup reminder or not
@@ -23,7 +23,7 @@ const ECHO knownEcho[] = {
   {ECHO_NOTIFY_NONE, "busy: processing"},
   {ECHO_NOTIFY_NONE, "Now fresh file:"},
   {ECHO_NOTIFY_NONE, "Now doing file:"},
-  {ECHO_NOTIFY_NONE, "Probe Offset"},
+  // {ECHO_NOTIFY_NONE, "Probe Offset"},
   {ECHO_NOTIFY_NONE, "Flow:"},
   {ECHO_NOTIFY_NONE, "echo:;"},                   //M503
   {ECHO_NOTIFY_NONE, "echo:  G"},                 //M503
@@ -61,10 +61,26 @@ static bool ack_seen(const char * str)
   return false;
 }
 
+static bool ack_continue_seen(const char * str)
+{
+  uint16_t i;
+  for (; ack_index < ACK_MAX_SIZE && dmaL2Cache[ack_index] != 0; ack_index++)
+  {
+    for (i = 0; str[i] != 0 && dmaL2Cache[ack_index + i] != 0 && dmaL2Cache[ack_index + i] == str[i]; i++)
+    {}
+    if (str[i] == 0)
+    {
+      ack_index += i;
+      return true;
+    }
+  }
+  return false;
+}
+
 static bool ack_cmp(const char *str)
 {
   uint16_t i;
-  for (i = 0; i<ACK_MAX_SIZE && str[i] != 0 && dmaL2Cache[i] != 0; i++)
+  for (i = 0; i < ACK_MAX_SIZE && str[i] != 0 && dmaL2Cache[i] != 0; i++)
   {
     if (str[i] != dmaL2Cache[i])
       return false;
@@ -82,10 +98,10 @@ static float ack_value()
 // Read the value after the / if exists
 static float ack_second_value()
 {
-  char *secondValue = strchr(&dmaL2Cache[ack_index],'/');
+  char *secondValue = strchr(&dmaL2Cache[ack_index], '/');
   if (secondValue != NULL)
   {
-    return (strtod(secondValue+1, NULL));
+    return (strtod(secondValue + 1, NULL));
   }
   else
   {
@@ -99,7 +115,7 @@ void ack_values_sum(float *data)
     ack_index++;
   *data += ack_value();
   while ((((dmaL2Cache[ack_index] >= '0') && (dmaL2Cache[ack_index] <= '9')) ||
-          (dmaL2Cache[ack_index] == '.'))  && (dmaL2Cache[ack_index] != '\n'))
+          (dmaL2Cache[ack_index] == '.')) && (dmaL2Cache[ack_index] != '\n'))
     ack_index++;
   if (dmaL2Cache[ack_index] != '\n')
     ack_values_sum(data);
@@ -119,7 +135,7 @@ void ackPopupInfo(const char *info)
     BUZZER_PLAY(sound_notify);
 
   // set echo message in status screen
-  if (info == echomagic)
+  if (info == echomagic || info == messagemagic)
   {
     //ignore all messages if parameter settings is open
     if (infoMenu.menu[infoMenu.cur] == menuParameterSettings)
@@ -203,29 +219,51 @@ void hostActionCommands(void)
 {
   char *find = strchr(dmaL2Cache + ack_index, '\n');
   *find = '\0';
-  if (ack_seen("notification "))
+
+  if (ack_seen(":notification "))
+  {
+    statusScreen_setMsg((uint8_t *)echomagic, (uint8_t *)dmaL2Cache + ack_index);  // always display the notification on status screen
+
+    uint16_t index = ack_index;
+
+    if (!ack_seen("Ready."))  // avoid to display unneeded/frequent useless notifications (e.g. "My printer Ready.")
+      addToast(DIALOG_TYPE_INFO, dmaL2Cache + index);
+  }
+  else if (ack_seen(":paused") || ack_seen(":pause"))
+  {
+    infoPrinting.pause = true;
+    if (ack_seen("filament_runout"))
+    {
+      setRunoutAlarmTrue();
+    }
+  }
+  else if (ack_seen(":cancel"))  //To be added to Marlin abortprint routine
+  {
+    if (infoHost.printing == true)
+    {
+      request_M27(0);
+    }
+    infoHost.printing = false;
+    infoPrinting.printing = false;
+    infoPrinting.cur = infoPrinting.size;
+  }
+  else if (ack_seen(":prompt_begin "))
   {
     strcpy(hostAction.prompt_begin, dmaL2Cache + ack_index);
-    statusScreen_setMsg((uint8_t *)echomagic, (uint8_t *)dmaL2Cache + ack_index);
-  }
-
-  if (ack_seen("prompt_begin "))
-  {
     hostAction.button = 0;
     hostAction.prompt_show = 1;
-    strcpy(hostAction.prompt_begin, dmaL2Cache + ack_index);
-    if (ack_seen("Resuming SD"))  // print fron onboard SD starting
+
+    if (ack_seen("Resuming"))  // resuming from onboard SD or TFT
     {
-      hostAction.prompt_show = 0;
-      infoHost.printing = true;  // it's set by "File opened" but put here also just to be sure
-      Serial_Puts(SERIAL_PORT, "M876 S0\n");  // auto-respond to a prompt request that is not shown on the TFT
-    }
-    else if (ack_seen("Resuming"))  //resuming from an onboard SD pause
-    {
+      if (isPrinting() && (infoFile.source >= BOARD_SD))  // if printing from onboard SD
+        infoHost.printing = true;
+
       infoPrinting.pause = false;
-      infoHost.printing = true;
       hostAction.prompt_show = 0;
-      Serial_Puts(SERIAL_PORT, "M876 S0\n");  // auto-respond to a prompt request that is not shown on the TFT
+      if (infoMachineSettings.firmwareType != FW_REPRAPFW)
+      {
+        Serial_Puts(SERIAL_PORT, "M876 S0\n");  // auto-respond to a prompt request that is not shown on the TFT
+      }
     }
     else if (ack_seen("Reheating"))
     {
@@ -237,7 +275,7 @@ void hostActionCommands(void)
       infoPrinting.pause = true;
     }
   }
-  else if (ack_seen("prompt_button "))
+  else if (ack_seen(":prompt_button "))
   {
     hostAction.button++;
     if (hostAction.button == 1)
@@ -249,8 +287,7 @@ void hostActionCommands(void)
       strcpy(hostAction.prompt_button2, dmaL2Cache + ack_index);
     }
   }
-
-  if (ack_seen("prompt_show") && hostAction.prompt_show)
+  else if (ack_seen(":prompt_show") && hostAction.prompt_show)
   {
     switch (hostAction.button)
     {
@@ -276,26 +313,6 @@ void hostActionCommands(void)
         break;
     }
   }
-
-  if (ack_seen("paused") || ack_seen("pause"))
-  {
-    infoPrinting.pause = true;
-    if (ack_seen ("filament_runout"))
-    {
-      setRunoutAlarmTrue();
-    }
-  }
-  else if (ack_seen("cancel"))  //To be added to Marlin abortprint routine
-  {
-    if (infoHost.printing == true)
-    {
-      request_M27(0);
-    }
-    infoHost.printing = false;
-    infoPrinting.printing = false;
-    infoPrinting.cur = infoPrinting.size;
-  }
-
 }
 
 void parseACK(void)
@@ -373,7 +390,7 @@ void parseACK(void)
 
     if (requestCommandInfo.inResponse)
     {
-      if (strlen(requestCommandInfo.cmd_rev_buf)+strlen(dmaL2Cache) < CMD_MAX_REV)
+      if (strlen(requestCommandInfo.cmd_rev_buf) + strlen(dmaL2Cache) < CMD_MAX_REV)
       {
         strcat(requestCommandInfo.cmd_rev_buf, dmaL2Cache);
         if (ack_seen(requestCommandInfo.stopMagic))
@@ -402,7 +419,11 @@ void parseACK(void)
       if (ack_seen("ok"))
         infoHost.wait = false;
 
-      // parse temperature
+      //----------------------------------------
+      // Pushed / polled / on printing parsed responses
+      //----------------------------------------
+
+      // parse and store temperatures
       if ((ack_seen("@") && ack_seen("T:")) || ack_seen("T0:"))
       {
         heatSetCurrentTemp(NOZZLE0, ack_value() + 0.5f);
@@ -423,6 +444,7 @@ void parseACK(void)
         avoid_terminal = !infoSettings.terminalACK;
         updateNextHeatCheckTime();
       }
+      // parse and store M114, current position
       else if ((ack_seen("X:") && ack_index == 2) || ack_seen("C: X:"))  // Smoothieware axis position starts with "C: X:"
       {
         coordinateSetAxisActual(X_AXIS, ack_value());
@@ -440,25 +462,34 @@ void parseACK(void)
         }
         coordinateQuerySetWait(false);
       }
-      // parse actual extruder position, response of "M114 E\n", required "M114_DETAIL" in Marlin
+      // parse and store M114 E, extruder position. Required "M114_DETAIL" in Marlin
       else if (ack_seen("Count E:"))
       {
         coordinateSetExtruderActualSteps(ack_value());
       }
       // parse and store feed rate percentage
-      else if ((infoMachineSettings.firmwareType == FW_REPRAPFW && ack_seen("factor: ")) ||
+      else if ((infoMachineSettings.firmwareType == FW_REPRAPFW && ack_seen("Speed factor: ")) ||
                ack_seen("FR:"))
       {
-        speedSetCurPercent(0,ack_value());
+        speedSetCurPercent(0, ack_value());
         speedQuerySetWait(false);
+      }
+      // parse and store flow rate percentage in case of RepRapFirmware
+      else if ((infoMachineSettings.firmwareType == FW_REPRAPFW) && ack_seen("Extrusion factor"))
+      {
+        if (ack_continue_seen(": "))
+        {
+          speedSetCurPercent(1, ack_value());
+          speedQuerySetWait(false);
+        }
       }
       // parse and store flow rate percentage
       else if (ack_seen("Flow: "))
       {
-        speedSetCurPercent(1,ack_value());
+        speedSetCurPercent(1, ack_value());
         speedQuerySetWait(false);
       }
-      // parse fan speed
+      // parse and store M106, fan speed
       else if (ack_seen("M106 P"))
       {
         uint8_t i = ack_value();
@@ -467,50 +498,86 @@ void parseACK(void)
           fanSetCurSpeed(i, ack_value());
         }
       }
-      // parse controller fan
+      // parse and store M710, controller fan
       else if (ack_seen("M710"))
       {
         uint8_t i = 0;
         if (ack_seen("S"))
         {
-          i = fanGetTypID(0,FAN_TYPE_CTRL_S);
+          i = fanGetTypID(0, FAN_TYPE_CTRL_S);
           fanSetCurSpeed(i, ack_value());
           fanQuerySetWait(false);
         }
         if (ack_seen("I"))
         {
-          i = fanGetTypID(0,FAN_TYPE_CTRL_I);
+          i = fanGetTypID(0, FAN_TYPE_CTRL_I);
           fanSetCurSpeed(i, ack_value());
           fanQuerySetWait(false);
         }
       }
-      // parse "HOST_ACTION_COMMANDS"
+      // parse pause message
+      else if (!infoMachineSettings.promptSupport && ack_seen("paused for user"))
+      {
+        setDialogText((u8*)"Printer is Paused", (u8*)"Paused for user\ncontinue?", LABEL_CONFIRM, LABEL_BACKGROUND);
+        showDialog(DIALOG_TYPE_QUESTION, breakAndContinue, NULL, NULL);
+      }
+      // parse host action commands. Required "HOST_ACTION_COMMANDS" and other settings in Marlin
       else if (ack_seen("//action:"))
       {
         hostActionCommands();
       }
-      else if (infoMachineSettings.onboard_sd_support == ENABLED && ack_seen("File opened: "))
+      // parse and store M118, filament data update
+      else if (ack_seen("filament_data"))
       {
-        // File opened: 1A29A~1.GCO Size: 6974
+        if (ack_seen("L:"))
+        {
+          ack_values_sum(&infoPrintSummary.length);
+        }
+        else if (ack_seen("W:"))
+        {
+          ack_values_sum(&infoPrintSummary.weight);
+        }
+        else if (ack_seen("C:"))
+        {
+          ack_values_sum(&infoPrintSummary.cost);
+        }
+        hasFilamentData = true;
+      }
+      else if (infoMachineSettings.onboard_sd_support == ENABLED &&
+               ack_seen(infoMachineSettings.firmwareType != FW_REPRAPFW ? "File opened:" : "job.file.fileName"))
+      {
+        char *fileEndString;
+        if (infoMachineSettings.firmwareType != FW_REPRAPFW)
+        {
+          // Marlin
+          // File opened: 1A29A~1.GCO Size: 6974
+          fileEndString = " Size:";
+        }
+        else
+        {
+          // RRF
+          // {"key":"job.file.fileName","flags": "","result":"0:/gcodes/pig-4H.gcode"}
+          ack_seen("result\":\"0:/gcodes/");
+          fileEndString = "\"";
+        }
         uint16_t start_index = ack_index;
-        uint16_t end_index = ack_seen("Size: ") ? (ack_index - sizeof("Size: ")) : start_index;
+        uint16_t end_index = ack_continue_seen(fileEndString) ? (ack_index - strlen(fileEndString)) : start_index;
         uint16_t path_len = MIN(end_index - start_index, MAX_PATH_LEN - strlen(getCurFileSource()) - 1);
         sprintf(infoFile.title,"%s/", getCurFileSource());
         strncat(infoFile.title, dmaL2Cache + start_index, path_len);
         infoFile.title[path_len + strlen(getCurFileSource()) + 1] = '\0';
 
-        infoPrinting.pause = false;
         infoHost.printing = true;
+        infoPrinting.pause = false;
         infoPrinting.time = 0;
         infoPrinting.cur = 0;
-        infoPrinting.size = ack_value();
+        infoPrinting.size = 1;  // Should be different with .cur to avoid 100% progress on TFT, Get the correct value by M27
 
-        infoFile.source = BOARD_SD_REMOTE;
         initPrintSummary();
 
         if (infoMachineSettings.autoReportSDStatus == 1)
         {
-          request_M27(infoSettings.m27_refresh_time);  //Check if there is a SD or USB print running.
+          request_M27(infoSettings.m27_refresh_time);  // Check if there is a SD or USB print running.
         }
       }
       else if (infoMachineSettings.onboard_sd_support == ENABLED &&
@@ -518,27 +585,212 @@ void parseACK(void)
                ack_seen("Not SD printing"))
       {
         infoHost.printing = false;
-        if (infoPrinting.printing)
+        if (isPrinting())
           infoPrinting.pause = true;
       }
       else if (infoMachineSettings.onboard_sd_support == ENABLED &&
                infoFile.source >= BOARD_SD &&
                ack_seen("SD printing byte"))
       {
-        infoPrinting.pause = false;
+        if (infoMachineSettings.firmwareType != FW_REPRAPFW)
+        {
+          infoPrinting.pause = false;
+        }
         // Parsing printing data
         // Example: SD printing byte 123/12345
         infoPrinting.cur = ack_value();
+        infoPrinting.size = ack_second_value();
         // powerFailedCache(position);
       }
       else if (infoMachineSettings.onboard_sd_support == ENABLED &&
                infoFile.source >= BOARD_SD &&
-               ack_seen("Done printing file"))
+               ack_seen(infoMachineSettings.firmwareType != FW_REPRAPFW ? "Done printing file" : "Finished printing file"))
       {
         infoHost.printing = false;
         printingFinished();
         infoPrinting.cur = infoPrinting.size;
       }
+
+      //----------------------------------------
+      // Tuning parsed responses
+      //----------------------------------------
+
+      // parse and store build volume size
+      else if (ack_seen("work:"))
+      {
+        if (ack_seen("min:"))
+        {
+          if (ack_seen("X:")) infoSettings.machine_size_min[X_AXIS] = ack_value();
+          if (ack_seen("Y:")) infoSettings.machine_size_min[Y_AXIS] = ack_value();
+          if (ack_seen("Z:")) infoSettings.machine_size_min[Z_AXIS] = ack_value();
+        }
+        if (ack_seen("max:"))
+        {
+          if (ack_seen("X:")) infoSettings.machine_size_min[X_AXIS] = ack_value();
+          if (ack_seen("Y:")) infoSettings.machine_size_min[Y_AXIS] = ack_value();
+          if (ack_seen("Z:")) infoSettings.machine_size_min[Z_AXIS] = ack_value();
+        }
+      }
+      // parse M48, Repeatability Test
+      else if (ack_seen("Mean:"))
+      {
+        char tmpMsg[100];
+        strcpy (tmpMsg, "Mean: ");
+        sprintf (&tmpMsg[strlen(tmpMsg)], "%0.5f", ack_value());
+        if (ack_seen("Min: "))
+        {
+          sprintf (&tmpMsg[strlen(tmpMsg)], "\nMin: %0.5f", ack_value());
+        }
+        if (ack_seen("Max: "))
+        {
+          sprintf (&tmpMsg[strlen(tmpMsg)], "\nMax: %0.5f", ack_value());
+        }
+        if (ack_seen("Range: "))
+        {
+          sprintf (&tmpMsg[strlen(tmpMsg)], "\nRange: %0.5f", ack_value());
+        }
+        setDialogText((u8* )"Repeatability Test", (uint8_t *)tmpMsg, LABEL_CONFIRM, LABEL_BACKGROUND);
+        showDialog(DIALOG_TYPE_INFO, NULL, NULL, NULL);
+      }
+      // parse M48, Standard Deviation
+      else if (ack_seen("Standard Deviation: "))
+      {
+        char tmpMsg[100];
+        strncpy(tmpMsg, (char *)getDialogMsgStr(), 6);
+        tmpMsg[6] = '\0';
+        if (strcmp(tmpMsg, "Mean: ") == 0)
+        {
+          SetLevelCornerPosition(5, ack_value());
+          SetLevelCornerPosition(0, 5);
+          sprintf(tmpMsg, "%s\nStandard Deviation: %0.5f", (char *)getDialogMsgStr(), GetLevelCornerPosition(5));
+          setDialogText((u8* )"Repeatability Test", (uint8_t *)tmpMsg, LABEL_CONFIRM, LABEL_BACKGROUND);
+          showDialog(DIALOG_TYPE_INFO, NULL, NULL, NULL);
+        }
+      }
+      // parse and store M211 or M503, software endstops state (e.g. from Probe Offset, MBL, Mesh Editor menus)
+      else if (ack_seen("Soft endstops"))
+      {
+        uint8_t curValue = infoMachineSettings.softwareEndstops;
+        infoMachineSettings.softwareEndstops = ack_seen("ON");
+
+        if (curValue != infoMachineSettings.softwareEndstops)  // send a notification only if status is changed
+          addToast(DIALOG_TYPE_INFO, dmaL2Cache);
+      }
+      // parse M303, PID Autotune finished message
+      else if (ack_seen("PID Autotune finished"))
+      {
+        pidUpdateStatus(true);
+      }
+      // parse M303, PID Autotune failed message
+      else if (ack_seen("PID Autotune failed"))
+      {
+        pidUpdateStatus(false);
+      }
+      // parse and store M355, Case light message
+      else if (ack_seen("Case light: OFF"))
+      {
+        caseLightSetState(false);
+        caseLightQuerySetWait(false);
+      }
+      else if (ack_seen("Case light: "))
+      {
+        caseLightSetState(true);
+        caseLightSetBrightness(ack_value());
+        caseLightQuerySetWait(false);
+      }
+      // parse and store M420 V1 T1, Mesh data (e.g. from Mesh Editor menu)
+      //
+      // IMPORTANT: It must be placed before the following keys:
+      //            1) echo:Bed Leveling
+      //            2) mesh. Z offset:
+      //
+      else if (meshIsWaitingData())
+      {
+        meshUpdateData(dmaL2Cache);  // update mesh data
+      }
+      // parse and store M420 V1 T1 or M420 Sxx or M503, ABL state (e.g. from Bed Leveling menu)
+      else if (ack_seen("echo:Bed Leveling"))
+      {
+        if (ack_seen("ON"))
+          setParameter(P_ABL_STATE, 0, ENABLED);
+        else
+          setParameter(P_ABL_STATE, 0, DISABLED);
+      }
+      // parse and store M420 V1 T1 (mesh. Z offset:) or M503 (G29 S4 Zxx), MBL Z offset value (e.g. from Babystep menu)
+      else if (ack_seen("mesh. Z offset:") || ack_seen("G29 S4 Z"))
+      {
+        setParameter(P_MBL_OFFSET, 0, ack_value());
+      }
+      // parse and store M851, Probe Z offset value (e.g. from Babystep menu) and X an Y probe Offset for LevelCorner position limit to be fixed see ABL.c
+      else if (ack_seen("Probe Offset"))
+      {
+        if (ack_seen("X"))
+        {
+          setParameter(P_PROBE_OFFSET, X_STEPPER, ack_value());
+        }
+        if (ack_seen("Y"))
+        {
+          setParameter(P_PROBE_OFFSET, Y_STEPPER, ack_value());
+        }
+        if (ack_seen("Z:") || (ack_seen("Z")))
+        {
+          setParameter(P_PROBE_OFFSET, Z_STEPPER, ack_value());
+        }
+      }
+      // parse G29 (ABL) + M118, ABL Completed message (ABL, BBL, UBL) (e.g. from ABL menu)
+      else if (ack_seen("ABL Completed"))
+      {
+        ablUpdateStatus(true);
+      }
+      // parse G29 (MBL), MBL Completed message (e.g. from MBL menu)
+      else if (ack_seen("Mesh probing done"))
+      {
+        mblUpdateStatus(true);
+      }
+      // G30 feedback to get the 4 corners Z value returned by Marlin for LevelCorner function 
+      else if (ack_seen("Bed X: ")) 			   
+      {
+        float valy = 0;
+        float valx = ack_value();
+        if (ack_seen("Y: ")) valy = ack_value();
+        if ((valx < 100) && (valy < 100))		  
+        {
+          if (ack_seen("Z: "))
+          {
+            SetLevelCornerPosition(1,ack_value());
+            SetLevelCornerPosition(0, 1);
+          }
+        }
+        else if ((valx > 100) && (valy < 100))	  
+        {
+          if (ack_seen("Z: "))
+          {
+            SetLevelCornerPosition(2,ack_value());
+            SetLevelCornerPosition(0, 2);
+          }
+        }
+        else if ((valx > 100) && (valy > 100))
+        {
+          if (ack_seen("Z: "))
+          {
+            SetLevelCornerPosition(3,ack_value());
+            SetLevelCornerPosition(0, 3);
+          }
+        }
+        else if ((valx < 100) && (valy > 100))   
+        {
+          if (ack_seen("Z: "))
+          {
+            SetLevelCornerPosition(4,ack_value());
+            SetLevelCornerPosition(0, 4);
+          }
+        }
+      }
+
+      //----------------------------------------
+      // Parameter / M503 / M115 parsed responses
+      //----------------------------------------
+
       // parse and store stepper steps/mm values
       else if (ack_seen("M92"))
       {
@@ -674,15 +926,6 @@ void parseACK(void)
       {
         setParameter(P_AUTO_RETRACT, 0, ack_value());
       }
-      // parse and store the software endstops state (M211)
-      else if (ack_seen("Soft endstops"))
-      {
-        uint8_t curValue = infoMachineSettings.softwareEndstops;
-        infoMachineSettings.softwareEndstops = ack_seen("ON");
-
-        if (curValue != infoMachineSettings.softwareEndstops)  // send a notification only if status is changed
-          addToast(DIALOG_TYPE_INFO, dmaL2Cache);
-      }
       // parse and store Offset 2nd Nozzle
       else if (ack_seen("M218 T1 X"))
       {
@@ -807,14 +1050,6 @@ void parseACK(void)
         else if (ack_seen("Mesh Bed Leveling"))
           infoMachineSettings.leveling = BL_MBL;
       #endif
-      // parse ABL state (M420)
-      else if (ack_seen("echo:Bed Leveling"))
-      {
-        if (ack_seen("ON"))
-          setParameter(P_ABL_STATE, 0, ENABLED);
-        else
-          setParameter(P_ABL_STATE, 0, DISABLED);
-      }
       // parse M115 capability report
       else if (ack_seen("FIRMWARE_NAME:"))
       {
@@ -829,6 +1064,11 @@ void parseACK(void)
         else if (ack_seen("RepRapFirmware"))
         {
           infoMachineSettings.firmwareType = FW_REPRAPFW;
+          setupMachine();
+        }
+        else if (ack_seen("Smoothieware"))
+        {
+          infoMachineSettings.firmwareType = FW_SMOOTHIEWARE;
           setupMachine();
         }
         else
@@ -925,163 +1165,62 @@ void parseACK(void)
         infoSettings.chamber_en = ack_value();
         setupMachine();
       }
-      else if (ack_seen("work:"))
-      {
-        if (ack_seen("min:"))
-        {
-          if (ack_seen("X:")) infoSettings.machine_size_min[X_AXIS] = ack_value();
-          if (ack_seen("Y:")) infoSettings.machine_size_min[Y_AXIS] = ack_value();
-          if (ack_seen("Z:")) infoSettings.machine_size_min[Z_AXIS] = ack_value();
-        }
-        if (ack_seen("max:"))
-        {
-          if (ack_seen("X:")) infoSettings.machine_size_min[X_AXIS] = ack_value();
-          if (ack_seen("Y:")) infoSettings.machine_size_min[Y_AXIS] = ack_value();
-          if (ack_seen("Z:")) infoSettings.machine_size_min[Z_AXIS] = ack_value();
-        }
-      }
-      // parse Repeatability Test
-      else if (ack_seen("Mean:"))
-      {
-        char tmpMsg[100];
-        strcpy (tmpMsg, "Mean: ");
-        sprintf (&tmpMsg[strlen(tmpMsg)], "%0.5f", ack_value());
-        if (ack_seen("Min: "))
-        {
-          sprintf (&tmpMsg[strlen(tmpMsg)], "\nMin: %0.5f", ack_value());
-        }
-        if (ack_seen("Max: "))
-        {
-          sprintf (&tmpMsg[strlen(tmpMsg)], "\nMax: %0.5f", ack_value());
-        }
-        if (ack_seen("Range: "))
-        {
-          sprintf (&tmpMsg[strlen(tmpMsg)], "\nRange: %0.5f", ack_value());
-        }
-        setDialogText( (u8* )"Repeatability Test", (uint8_t *)tmpMsg, LABEL_CONFIRM, LABEL_BACKGROUND);
-        showDialog(DIALOG_TYPE_INFO, NULL, NULL, NULL);
-      }
-      else if (ack_seen("Standard Deviation: "))
-      {
-        char tmpMsg[100];
-        strncpy(tmpMsg, (char *)getDialogMsgStr(), 6);
-        tmpMsg[6] = '\0';
-        if (strcmp(tmpMsg, "Mean: ") == 0)
-        {
-          sprintf(tmpMsg, "%s\nStandard Deviation: %0.5f", (char *)getDialogMsgStr(), ack_value());
-          setDialogText( (u8* )"Repeatability Test", (uint8_t *)tmpMsg, LABEL_CONFIRM, LABEL_BACKGROUND);
-          showDialog(DIALOG_TYPE_INFO, NULL, NULL, NULL);
-        }
-      }
-      // parse and store Probe Z offset value (M851)
-      else if (ack_seen("Probe Offset"))
-      {
-        if (ack_seen("Z:") || (ack_seen("Z")))
-        {
-          setParameter(P_PROBE_OFFSET, Z_STEPPER, ack_value());
-        }
-      }
-      // parse and store MBL Z offset value (from M503 (G29 S4 Zxx) or M420 V1 T1)
-      else if (ack_seen("G29 S4 Z") || ack_seen("mesh. Z offset:"))
-      {
-        setParameter(P_MBL_OFFSET, 0, ack_value());
-      }
-      // parse and store flow rate percentage incase of RepRapFirmware
-      else if ((infoMachineSettings.firmwareType == FW_REPRAPFW) && ack_seen("extruder"))
-      {
-        ack_index+=4;
-        speedSetCurPercent(1,ack_value());
-        speedQuerySetWait(false);
-      }
-      else if (ack_seen("Case light: OFF"))
-      {
-        caseLightSetState(false);
-        caseLightQuerySetWait(false);
-      }
-      else if (ack_seen("Case light: "))
-      {
-        caseLightSetState(true);
-        caseLightSetBrightness(ack_value());
-        caseLightQuerySetWait(false);
-      }
-      // parse pause message
-      else if (!infoMachineSettings.promptSupport && ack_seen("paused for user"))
-      {
-        setDialogText((u8*)"Printer is Paused",(u8*)"Paused for user\ncontinue?", LABEL_CONFIRM, LABEL_BACKGROUND);
-        showDialog(DIALOG_TYPE_QUESTION, breakAndContinue, NULL,NULL);
-      }
-      // parse ABL Complete message
-      else if (ack_seen("ABL Complete"))
-      {
-        ablUpdateStatus(true);
-      }
-      // parse BBL Complete message
-      else if (ack_seen("BBL Complete"))
-      {
-        ablUpdateStatus(true);
-      }
-      // parse UBL Complete message
-      else if (ack_seen("UBL Complete"))
-      {
-        ablUpdateStatus(true);
-      }
-      // parse MBL Complete message
-      else if (ack_seen("Mesh probing done"))
-      {
-        mblUpdateStatus(true);
-      }
-      // parse Mesh data
-      else if (meshIsWaitingFirstData() && (ack_seen("Mesh Bed Level data:") ||            // MBL
-                                            ack_seen("Bed Topography Report for CSV:") ||  // UBL
-                                            ack_seen("Bilinear Leveling Grid:") ||         // ABL Bilinear
-                                            ack_seen("Bed Level Correction Matrix:") ||    // ABL Linear or 3-Point
-                                            ack_seen("Invalid mesh")))                     // error echo
-      {
-        meshUpdateData(dmaL2Cache);  // start data updating
-      }
-      else if (meshIsWaitingData())
-      {
-        meshUpdateData(dmaL2Cache);  // continue data updating
-      }
-      // parse PID Autotune finished message
-      else if (ack_seen("PID Autotune finished"))
-      {
-        pidUpdateStatus(true);
-      }
-      // parse PID Autotune failed message
-      else if (ack_seen("PID Autotune failed"))
-      {
-        pidUpdateStatus(false);
-      }
-      // parse error messages & Echo messages
+
+      //----------------------------------------
+      // Error / echo parsed responses
+      //----------------------------------------
+
+      // parse error messages
       else if (ack_seen(errormagic))
       {
         ackPopupInfo(errormagic);
       }
-      // if no known echo was found and processed, then popup the echo message
+      // parse echo messages
       else if (ack_seen(echomagic))
       {
-        if (!processKnownEcho())
+        if (!processKnownEcho())  // if no known echo was found and processed, then popup the echo message
         {
           ackPopupInfo(echomagic);
         }
       }
-      // parse filament data from gCode (M118)
-      else if (ack_seen("filament_data"))
+
+      // keep it here and parse it the latest
+      else if (infoMachineSettings.firmwareType == FW_REPRAPFW)
       {
-        if (ack_seen("L:"))
+        if (ack_seen(warningmagic))
         {
-          ack_values_sum(&infoPrintSummary.length);
+          ackPopupInfo(warningmagic);
         }
-        else if (ack_seen("W:"))
+        else if (ack_seen(messagemagic))
         {
-          ack_values_sum(&infoPrintSummary.weight);
+          ackPopupInfo(messagemagic);
         }
-        else if (ack_seen("C:"))
+        else if (ack_seen("access point "))
         {
-          ack_values_sum(&infoPrintSummary.cost);
+          uint8_t *string = (uint8_t *)&dmaL2Cache[ack_index];
+          uint16_t string_start = ack_index;
+          uint16_t string_end = string_start;
+          if (ack_seen(","))  //
+            string_end = ack_index - 1 ;
+
+          infoSetAccessPoint(string, string_end - string_start);  // Set access poing
+
+          if (ack_seen("IP address "))
+          {
+            string = (uint8_t *)&dmaL2Cache[ack_index];
+            string_start = ack_index;
+            if (ack_seen("\n"))  //
+              string_end = ack_index - 1;
+            infoSetIPAddress(string, string_end - string_start);  // Set IP address
+          }
         }
-        hasFilamentData = true;
+      }
+      else if (infoMachineSettings.firmwareType == FW_SMOOTHIEWARE)
+      {
+        if (ack_seen(errorZProbe)) //smoothieboard ZProbe triggered before move, aborting command.
+        {
+          ackPopupInfo("ZProbe triggered\n before move.\n Aborting Print!");
+        }
       }
     }
 

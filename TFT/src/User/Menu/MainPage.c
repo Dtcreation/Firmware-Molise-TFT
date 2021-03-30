@@ -26,6 +26,11 @@ void menuMain(void)
 
   KEY_VALUES key_num = KEY_IDLE;
 
+  if (infoSettings.rrf_macros_enable)
+  {
+    mainPageItems.items[5].label.index = LABEL_MACROS;
+  }
+
   if (infoSettings.status_screen != 1)
   {
     mainPageItems.items[7].icon = ICON_PRINT;
@@ -67,7 +72,7 @@ void menuMain(void)
         break;
 
       case KEY_ICON_5:
-        infoMenu.menu[++infoMenu.cur] = menuCustom;
+        infoMenu.menu[++infoMenu.cur] = infoSettings.rrf_macros_enable ? menuCallMacro : menuCustom;
         break;
 
       case KEY_ICON_6:
