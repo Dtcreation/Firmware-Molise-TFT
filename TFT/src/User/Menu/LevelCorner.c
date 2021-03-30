@@ -46,7 +46,7 @@ void ScanLevelCorner(u8 pointer)
 void refreshLevelCornerValue(MENUITEMS levelItems)
 {
   char tempstr[10];
-  int valIndex[4] = {4,6,2,0};
+  int valIndex[4] = {4,5,1,0};
   int valPos;
   int valPosSub;
   LIVE_INFO lvIcon;
@@ -81,11 +81,11 @@ void refreshProbeAccuracy(MENUITEMS levelItems)
     lvIcon.lines[4].pos = ss_val_point;
     sprintf(tempstr, "%1.4f", GetLevelCornerPosition(5));
     lvIcon.lines[4].text = (uint8_t *)tempstr;
-    showLevelCornerLiveInfo(5, 4, &lvIcon, &levelItems.items[5]);
+    showLevelCornerLiveInfo(3, 4, &lvIcon, &levelItems.items[3]);
     lvIconM48.lines[0].pos = ss_val_point;
     sprintf(tempstr, "%s", " M48    ");
     lvIconM48.lines[0].text = (uint8_t *)tempstr;
-    showTextOnIcon(5, 0, &lvIconM48, &levelcornerItems.items[5]);
+    showTextOnIcon(3, 0, &lvIconM48, &levelcornerItems.items[3]);
     SetLevelCornerPosition(0, 0);
   }
 }
