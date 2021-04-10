@@ -30,7 +30,10 @@ void moveToLevelingPoint(uint8_t point)
     x_left_point = x_right_point;
     x_right_point = temp;
   }
-  if (infoSettings.invert_axis[Y_AXIS])
+  // The y-axis of different printer (move hotbed or move nozzle) move in different directions
+  // So y-axis leveling invert can't follow up invert_axis[Y_AXIS]
+  // We separate a single variable to deal with the y-axis leveling movement direction
+  if (infoSettings.leveling_invert_y_axis)
   {
     int16_t temp = y_lower_point;  // Swap lower and upper
     y_lower_point = y_upper_point;
@@ -80,16 +83,12 @@ void menuManualLeveling(void)
         break;
 
       case KEY_ICON_2:
-        {
-          char tempstr[30];
-          sprintf(tempstr, "Min:%d | Max:%d", LEVELING_EDGE_DISTANCE_MIN, LEVELING_EDGE_DISTANCE_MAX);
+      {
+        infoSettings.level_edge = editIntValue(LEVELING_EDGE_DISTANCE_MIN, LEVELING_EDGE_DISTANCE_MAX, LEVELING_EDGE_DISTANCE_DEFAULT, infoSettings.level_edge);
 
-          int val = numPadInt((uint8_t *)tempstr, infoSettings.level_edge, LEVELING_EDGE_DISTANCE_DEFAULT, false);
-          infoSettings.level_edge = NOBEYOND(LEVELING_EDGE_DISTANCE_MIN, val, LEVELING_EDGE_DISTANCE_MAX);
-
-          menuDrawPage(&manualLevelingItems);
-        }
+        menuDrawPage(&manualLevelingItems);
         break;
+      }
 
       case KEY_ICON_3:
         storeCmd("M84 X Y E\n");
