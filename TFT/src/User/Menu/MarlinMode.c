@@ -1,7 +1,7 @@
 #include "MarlinMode.h"
+#include "includes.h"
 #include "spi_slave.h"
 #include "HD44780.h"
-#include "includes.h"
 
 #ifdef HAS_EMULATOR
 
@@ -29,12 +29,16 @@ void menuMarlinMode(void)
   }
 
   #if defined(ST7920_EMULATOR)
+    ST7920 st7920;
+
     if (infoSettings.marlin_type == LCD12864)
     {
       marlinInit = SPI_Slave;
       marlinDeInit = SPI_SlaveDeInit;
       marlinGetData = SPI_SlaveGetData;
       marlinParse = ST7920_ParseRecv;
+
+      ST7920_Init(&st7920);
     }
   #endif
 

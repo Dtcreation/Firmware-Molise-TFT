@@ -6,13 +6,12 @@ extern "C" {
 #endif
 
 #include <stdbool.h>
-#include "includes.h"
+#include <stdint.h>
 
 enum
 {
-  FILAMENT_RUNOUT_OFF = 0,
-  FILAMENT_RUNOUT_ON,
-  FILAMENT_SMART_RUNOUT_ON,
+  FILAMENT_SENSOR_NORMAL,
+  FILAMENT_SENSOR_SMART,
 };
 
 void PS_ON_Init(void);

@@ -21,10 +21,8 @@
 
 // LCD interface
 #ifndef TFTLCD_DRIVER
-  #define TFTLCD_DRIVER               SSD1963  // Type of LCD driver, now support[RM68042, ILI9488, ILI9341, ST7789, HX8558, SSD1963].
-  #define TFTLCD_DRIVER_SPEED         0x10     // SSD1963 needs slower speed
-  #define TFTLCD_0_DEGREE_REG_VALUE   0x00
-  #define TFTLCD_180_DEGREE_REG_VALUE 0x03
+  #define TFTLCD_DRIVER       SSD1963  // Type of LCD driver, now support[RM68042, ILI9488, ILI9341, ST7789, HX8558, SSD1963].
+  #define TFTLCD_DRIVER_SPEED 0x10     // SSD1963 needs slower speed
 #endif
 
 #ifndef SSD1963_LCD_PARA
@@ -60,6 +58,11 @@
 #define SERIAL_PORT_2 _USART1
 #define SERIAL_PORT_3 _USART3
 #define SERIAL_PORT_4 _UART4
+
+// Serial port for debugging
+#ifdef SERIAL_DEBUG_ENABLED
+  #define SERIAL_DEBUG_PORT SERIAL_PORT_3
+#endif
 
 // XPT2046 Software SPI Pins (touch screen ic)
 // need CS/SCK/MISO/MOSI for Software SPI, and TPEN for pen interrupt

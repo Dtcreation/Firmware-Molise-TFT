@@ -27,6 +27,13 @@ extern "C" {
 
 #define SUMMARY_NAME_LEN 26  // max character length to copy from name buffer
 
+typedef enum
+{
+  PAUSE_NORMAL = 0,
+  PAUSE_M0,
+  PAUSE_EXTERNAL,
+} PAUSE_TYPE;
+
 typedef struct
 {
   // data
@@ -39,6 +46,8 @@ typedef struct
 
 extern PRINT_SUMMARY infoPrintSummary;
 
+bool isHostPrinting(void);  // condition callback for loopProcessToCondition()
+
 void setRunoutAlarmTrue(void);
 void setRunoutAlarmFalse(void);
 bool getRunoutAlarm(void);
@@ -47,14 +56,20 @@ void breakAndContinue(void);
 void resumeAndPurge(void);
 void resumeAndContinue(void);
 
-void setPrintTime(uint32_t RTtime);
+void setPrintTime(uint32_t elapsedTime);
 uint32_t getPrintTime(void);
 void getPrintTimeDetail(uint8_t * hour, uint8_t * min, uint8_t * sec);
+
+void setPrintRemainingTime(int32_t remainingTime);  // used for M73 Rxx and M117 Time Left xx
+void parsePrintRemainingTime(char * buffer);        // used for M117 Time Left xx
+uint32_t getPrintRemainingTime();
+void getPrintRemainingTimeDetail(uint8_t * hour, uint8_t * min, uint8_t * sec);
 
 uint32_t getPrintSize(void);
 uint32_t getPrintCur(void);
 
 void setPrintProgress(float cur, float size);
+void setPrintProgressPercentage(uint8_t percentage);  // used by M73 Pxx
 bool updatePrintProgress(void);
 uint8_t getPrintProgress(void);
 
@@ -81,14 +96,14 @@ void printEnd(void);                              // it also sends end gcode
 
 void printComplete(void);                         // print successfully completed
 void printAbort(void);                            // it also sends cancel gcode
-bool printPause(bool is_pause, bool is_m0pause);
+bool printPause(bool isPause, PAUSE_TYPE pauseType);
 
 bool isPrinting(void);
 bool isPaused(void);
 
 void setPrintHost(bool isPrinting);
 void setPrintAbort(void);
-void setPrintPause(bool updateHost);
+void setPrintPause(bool updateHost, PAUSE_TYPE pauseType);
 void setPrintResume(bool updateHost);
 
 void loopPrintFromTFT(void);   // called in loopBackEnd(). It handles a print from TFT, if any

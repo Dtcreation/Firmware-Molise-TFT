@@ -4,8 +4,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#include "Settings.h"
 #include "menu.h"
-#include "Heat.h"
 
 #define ITEM_DEGREE_NUM         3
 #define ITEM_SPEED_NUM          3
@@ -14,6 +15,24 @@ extern "C" {
 #define ITEM_FINE_MOVE_LEN_NUM  3
 #define ITEM_EXT_LEN_NUM        5
 #define ITEM_TOGGLE_NUM         2
+
+typedef enum
+{
+  VALUE_NONE = 0,
+  VALUE_BYTE,
+  VALUE_INT,
+  VALUE_FLOAT,
+  VALUE_STRING,
+} VALUE_TYPE;
+
+typedef enum
+{
+  COLD = 0,
+  SETTLING,
+  HEATED,
+} NOZZLE_STATUS;
+
+extern SCROLL scrollLine;
 
 extern uint8_t currentTool;
 extern uint8_t currentFan;
@@ -37,29 +56,45 @@ extern const float extlenSteps[ITEM_EXT_LEN_NUM];
 extern const LABEL itemToggle[ITEM_TOGGLE_NUM];
 extern const uint16_t iconToggle[ITEM_TOGGLE_NUM];
 
+// Check if next screen update is due
 bool nextScreenUpdate(uint32_t duration);
 
-extern const bool warmupTemperature(uint8_t toolIndex, void (* callback)(void));
+#ifdef FRIENDLY_Z_OFFSET_LANGUAGE
+  void invertZAxisIcons(MENUITEMS * menuItems);
 
-extern const void cooldownTemperature(void);
+  #define  INVERT_Z_AXIS_ICONS(menuItemsPtr) invertZAxisIcons(menuItemsPtr)
+#else
+  #define  INVERT_Z_AXIS_ICONS(menuItemsPtr)
+#endif
+
+void drawBorder(const GUI_RECT *rect, uint16_t color, uint16_t edgeDistance);
+
+void drawBackground(const GUI_RECT *rect, uint16_t bgColor, uint16_t edgeDistance);
+
+void drawStandardValue(const GUI_RECT *rect, VALUE_TYPE valType, const void *val, uint16_t font,
+                       uint16_t color, uint16_t bgColor, uint16_t edgeDistance, bool clearBgColor);
 
 // Show/draw temperature in a standard menu
-extern const void temperatureReDraw(uint8_t toolIndex, int16_t * temp, bool skipHeader);
+void temperatureReDraw(uint8_t toolIndex, int16_t * temp, bool skipHeader);
 
 // Show/draw fan in a standard menu
-extern const void fanReDraw(uint8_t fanIndex, bool skipHeader);
+void fanReDraw(uint8_t fanIndex, bool skipHeader);
 
 // Show/draw extruder in a standard menu
-extern const void extruderReDraw(uint8_t extruderIndex, float extrusion, bool skipHeader);
+void extruderReDraw(uint8_t extruderIndex, float extrusion, bool skipHeader);
 
 // Show/draw percentage in a standard menu
-extern const void percentageReDraw(uint8_t itemIndex, bool skipHeader);
+void percentageReDraw(uint8_t itemIndex, bool skipHeader);
 
 // Edit temperature in a standard menu
-extern const int16_t editIntValue(int16_t minValue, int16_t maxValue, int16_t resetValue, int16_t value);
+int32_t editIntValue(int32_t minValue, int32_t maxValue, int32_t resetValue, int32_t value);
 
 // Edit a float value in a standard menu
-extern const float editFloatValue(float minValue, float maxValue, float resetValue, float value);
+float editFloatValue(float minValue, float maxValue, float resetValue, float value);
+
+NOZZLE_STATUS warmupNozzle(uint8_t toolIndex, void (* callback)(void));
+
+void cooldownTemperature(void);
 
 #ifdef __cplusplus
 }

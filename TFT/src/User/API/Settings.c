@@ -23,6 +23,7 @@ void infoSettingsReset(void)
 // General Settings
   infoSettings.status_screen          = ENABLE_STATUS_SCREEN;
   infoSettings.baudrate               = BAUDRATE;
+  infoSettings.multi_serial           = 0;
   infoSettings.language               = LANG_DEFAULT;
 
   infoSettings.title_bg_color         = lcd_colors[TITLE_BACKGROUND_COLOR];
@@ -41,7 +42,9 @@ void infoSettingsReset(void)
   infoSettings.terminalACK            = DISABLED;
   infoSettings.persistent_info        = ENABLED;
   infoSettings.file_listmode          = ENABLED;
+  infoSettings.files_sort_by          = SORT_DATE_NEW_FIRST;
   infoSettings.ack_notification       = ACK_NOTIFICATION_STYLE;
+  infoSettings.notification_m117      = DISABLED;
   infoSettings.emulate_m600           = EMULATE_M600;
 
 // Marlin Mode Settings
@@ -62,7 +65,7 @@ void infoSettingsReset(void)
   infoSettings.chamber_en             = DISABLE;
   infoSettings.ext_count              = EXTRUDER_NUM;
   infoSettings.fan_count              = FAN_NUM;
-  infoSettings.fan_ctrl_count         = FAN_CTRL_NUM;
+  infoSettings.ctrl_fan_en            = ENABLE_CTRL_FAN;
   infoSettings.min_ext_temp           = PREVENT_COLD_EXTRUSION_MINTEMP;
   infoSettings.auto_load_leveling     = AUTO_SAVE_LOAD_BL_VALUE;
   infoSettings.touchmi_sensor         = TOUCHMI_SENSOR_VALUE;
@@ -71,6 +74,7 @@ void infoSettingsReset(void)
   infoSettings.m27_active             = M27_WATCH_OTHER_SOURCES;
   infoSettings.longFileName           = AUTO;  //ENABLED / DISABLED / AUTO
   infoSettings.fan_percentage         = SHOW_FAN_PERCENTAGE;
+  infoSettings.prog_disp_type         = ELAPSED_REMAINING;
 
   infoSettings.pause_retract_len      = NOZZLE_PAUSE_RETRACT_LENGTH;
   infoSettings.resume_purge_len       = NOZZLE_RESUME_PURGE_LENGTH;
@@ -94,7 +98,7 @@ void infoSettingsReset(void)
   infoSettings.auto_off_temp          = AUTO_SHUT_DOWN_MAXTEMP;
 
 // Filament Runout Settings
-  infoSettings.runout                 = DISABLED;
+  infoSettings.runout                 = FIL_SENSOR_TYPE;
   infoSettings.runout_invert          = FIL_RUNOUT_INVERTING;
   infoSettings.runout_noise_ms        = FIL_NOISE_THRESHOLD;
   infoSettings.runout_distance        = FILAMENT_RUNOUT_DISTANCE_MM;
@@ -102,7 +106,6 @@ void infoSettingsReset(void)
 // Power Loss Recovery & BTT UPS Settings
   infoSettings.powerloss_en           = ENABLED;
   infoSettings.powerloss_home         = HOME_BEFORE_PLR;
-  infoSettings.powerloss_invert       = PS_ON_ACTIVE_HIGH;
   infoSettings.powerloss_z_raise      = POWER_LOSS_ZRAISE;
   infoSettings.btt_ups                = BTT_MINI_UPS;
 
@@ -111,8 +114,11 @@ void infoSettingsReset(void)
   infoSettings.toastSound             = ENABLED;
   infoSettings.alertSound             = ENABLED;
   infoSettings.heaterSound            = ENABLED;
+#ifdef LED_COLOR_PIN
   infoSettings.knob_led_color         = STARTUP_KNOB_LED_COLOR;
   infoSettings.knob_led_idle          = ENABLED;
+  infoSettings.neopixel_pixels        = NEOPIXEL_PIXELS;
+#endif
   infoSettings.lcd_brightness         = DEFAULT_LCD_BRIGHTNESS;
   infoSettings.lcd_idle_brightness    = DEFAULT_LCD_IDLE_BRIGHTNESS;
   infoSettings.lcd_idle_timer         = DEFAULT_LCD_IDLE_TIMER;
@@ -158,11 +164,6 @@ void infoSettingsReset(void)
     infoSettings.pause_feedrate[i]    = default_pause_speed[i];  // XY, Z, E
   }
 
-  for (int i = 0; i < PREHEAT_COUNT; i++)
-  {
-    infoSettings.preheat_temp[i]      = default_preheat_ext[i];
-    infoSettings.preheat_bed[i]       = default_preheat_bed[i];
-  }
   resetConfig();
 }
 
@@ -172,6 +173,7 @@ void initMachineSetting(void)
   infoMachineSettings.firmwareType            = FW_NOT_DETECTED;  // set fimware type to not_detected to avoid repeated ABL gcode on mode change
   infoMachineSettings.EEPROM                  = ENABLED;
   infoMachineSettings.autoReportTemp          = DISABLED;
+  infoMachineSettings.autoReportPos           = DISABLED;
   infoMachineSettings.leveling                = BL_DISABLED;
   infoMachineSettings.zProbe                  = ENABLED;
   infoMachineSettings.levelingData            = ENABLED;
@@ -184,9 +186,8 @@ void initMachineSetting(void)
   infoMachineSettings.autoReportSDStatus      = DISABLED;
   infoMachineSettings.long_filename_support   = DISABLED;
   infoMachineSettings.babyStepping            = DISABLED;
+  infoMachineSettings.buildPercent            = DISABLED;
   infoMachineSettings.softwareEndstops        = ENABLED;
-
-  fanControlInit();
 }
 
 void setupMachine(void)
@@ -217,34 +218,27 @@ void setupMachine(void)
   {
     infoMachineSettings.EEPROM                  = ENABLED;
     infoMachineSettings.autoReportTemp          = DISABLED;
+    infoMachineSettings.autoReportPos           = DISABLED;
     infoMachineSettings.leveling                = ENABLED;
     infoMachineSettings.zProbe                  = ENABLED;
     infoMachineSettings.levelingData            = ENABLED;
     infoMachineSettings.emergencyParser         = ENABLED;
     infoMachineSettings.autoReportSDStatus      = DISABLED;
   }
-  if (infoSettings.onboardSD == ENABLED)
-  {
-    infoMachineSettings.onboard_sd_support = ENABLED;
-  }
-  else if (infoSettings.onboardSD == DISABLED)
-  {
-    infoMachineSettings.onboard_sd_support = DISABLED;
-  }
-  if (infoSettings.longFileName == ENABLED)
-  {
-    infoMachineSettings.long_filename_support = ENABLED;
-  }
-  else if (infoSettings.longFileName == DISABLED)
-  {
-    infoMachineSettings.long_filename_support = DISABLED;
-  }
+  if (infoSettings.onboardSD != AUTO)
+    infoMachineSettings.onboard_sd_support = infoSettings.onboardSD;
+
+  if (infoSettings.longFileName != AUTO)
+    infoMachineSettings.long_filename_support = infoSettings.longFileName;
+
   mustStoreCmd("M503 S0\n");
 
   if (infoMachineSettings.firmwareType == FW_REPRAPFW)
   {
     mustStoreCmd("M555 P2\n");  //  Set RRF compatibility behaves similar to 2: Marlin
   }
+  mustStoreCmd("M82\n");  // Set extruder to absolute mode
+  mustStoreCmd("G90\n");  // Set to Absolute Positioning
 }
 
 float flashUsedPercentage(void)

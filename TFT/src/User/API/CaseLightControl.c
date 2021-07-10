@@ -1,4 +1,5 @@
 #include "CaseLightControl.h"
+#include "includes.h"
 
 static uint8_t caseLightBrightness = 0;
 static uint8_t lastCaseLightBrightness = 0;
@@ -21,11 +22,6 @@ void caseLightValueQuery(void)
 void caseLightSetState(bool state)
 {
   caseLightState = state;
-}
-
-void caseLightToggleState(void)
-{
-  caseLightState = !caseLightState;
 }
 
 void caseLightSetBrightness(uint8_t brightness)

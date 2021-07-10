@@ -1,30 +1,71 @@
 #ifndef _CONFIGURATION_H_
 #define _CONFIGURATION_H_
-#define CONFIG_VERSION 20210321
+#define CONFIG_VERSION 20210605
 
 //===========================================================================
-//============================= General Settings ============================
+//============================ Developer Settings ===========================
 //===========================================================================
 
 /**
  * Screenshot for documentation
  * Long press touch screen capture the current full screen to SD card
- * Only for documentation purposes, DON'T enable it when normal printing.
+ * Only for documentation purposes, DON'T enable it for normal printing.
  */
 //#define SCREEN_SHOT_TO_SD
 
+//===========================================================================
+//============================== Debug Settings =============================
+//===========================================================================
+
+/* If one of the DEBUG_x below is defined the SERIAL_DEBUG_PORT defined in board specific Pin_xx.h file
+ * will be used for debugging purposes. DON'T enable one of the DEBUG_x below for normal printing.
+ *
+ * Warning: SERIAL_DEBUG_PORT needs to be activated specifically. Please consider settings MULTI_SERIAL > 0
+ * in the Configuration.h or set e.g. "multi_serial: 2" in the config.ini.
+ * If the TFT is only showing the boot logo and is not responding anymore, check the MULTI_SERIAL setting.
+ * If you update the config.ini you need to reset the TFT *twice* (first reset to update the config, second
+ * reset to enable the SERIAL_DEBUG_PORT due to the changed firmware config).
+ */
+
+/**
+ * Generic Debug
+ * Uncomment/Enable to enable arbitrary debug serial communication to SERIAL_DEBUG_PORT defined in board specific Pin_xx.h file.
+ */
+//#define DEBUG_SERIAL_GENERIC
+
+/**
+ * Serial Communication Debug
+ * Uncomment/Enable to forward/dump all serial communication to SERIAL_DEBUG_PORT defined in board specific Pin_xx.h file.
+ */
+//#define DEBUG_SERIAL_COMM
+
+/**
+ * Config File Debug
+ * Uncomment/Enable to show debug information during config file processing.
+ */
+//#define DEBUG_SERIAL_CONFIG
+
+#if defined(DEBUG_SERIAL_GENERIC) || defined(DEBUG_SERIAL_CONFIG) || defined(DEBUG_SERIAL_COMM)
+  #define SERIAL_DEBUG_ENABLED
+#else
+  #undef SERIAL_DEBUG_ENABLED
+#endif
+
+//===========================================================================
+//============================= General Settings ============================
+//===========================================================================
+
+// Enable Status Screen
+// Enable this to show status screen as the default home screen. Disabling it will show a static menu.
+#define ENABLE_STATUS_SCREEN true  // To enabled: true | To disabled: false (Default: true)
+
 /**
  * Smart Home
- *
  * If enabled, long press "Back" button triggers Home screen
  * It doesn't interfere with the "Screenshot" and "Marlin/Touch Mode" other than if
  * enabled, long press "Back" will not trigger "Screenshot" or "Marlin/Touch Mode"
  */
 #define SMART_HOME
-
-// Enable Status Screen
-// Enable this to show status screen as the default home screen. Disabling it will show a static menu.
-#define ENABLE_STATUS_SCREEN true  // To enabled: true | To disabled: false (Default: true)
 
 /**
  * This setting determines the communication speed of the printer.
@@ -132,44 +173,44 @@
 
 #define HOTEND_NUM      1  // set in 1~6
 #define EXTRUDER_NUM    1  // set in 1~6
-#define FAN_NUM         1  // set in 1~6
-#define FAN_CTRL_NUM    0  // set in 1~2
 #define MIXING_EXTRUDER 0  // Default: 0. For mixing_extruder set to 1 (This option turns off autodetection
                            // of the number of extruders)
+#define FAN_NUM         1  // set in 1~6
+#define ENABLE_CTRL_FAN 1  // Set 0 to disable & 1 to enable controller fan speed control for Idle and Active
+                           // cooling if marlin supports ontroller fan (M710).
 
-#define PREHEAT_LABELS   {"PLA", "PETG", "ABS", "WOOD", "TPU", "NYLON"}
-#define PREHEAT_HOTEND   {200,   240,    230,   170,    220,   250}
-#define PREHEAT_BED      {60,    70,     90,    50,     50,    90}
+#define PREHEAT_LABELS {"PLA", "PETG", "ABS", "WOOD", "TPU", "NYLON"}
+#define PREHEAT_HOTEND {200,   240,    230,   170,    220,   250}
+#define PREHEAT_BED    { 60,    70,     90,    50,     50,    90}
 
-#define HEAT_MAX_TEMP    {275,       275,       275,       275,       275,       275,       150,    60}
-#define HEAT_SIGN_ID     {"T0:",     "T1:",     "T2:",     "T3:",     "T4:",     "T5:",     "B:",   "C:"}
-#define HEAT_DISPLAY_ID  {"T0",      "T1",      "T2",      "T3",      "T4",      "T5",      "Bed",  "Chamber"}
-#define HEAT_CMD         {"M104 T0", "M104 T1", "M104 T2", "M104 T3", "M104 T4", "M104 T5", "M140", "M141"};
-#define HEAT_WAIT_CMD    {"M109 T0", "M109 T1", "M109 T2", "M109 T3", "M109 T4", "M109 T5", "M190", "M191"};
+#define HEAT_MAX_TEMP   {275,       275,       275,       275,       275,       275,       150,    60}
+#define HEAT_SIGN_ID    {"T0:",     "T1:",     "T2:",     "T3:",     "T4:",     "T5:",     "B:",   "C:"}
+#define HEAT_DISPLAY_ID {"T0",      "T1",      "T2",      "T3",      "T4",      "T5",      "Bed",  "Chamber"}
+#define HEAT_CMD        {"M104 T0", "M104 T1", "M104 T2", "M104 T3", "M104 T4", "M104 T5", "M140", "M141"}
+#define HEAT_WAIT_CMD   {"M109 T0", "M109 T1", "M109 T2", "M109 T3", "M109 T4", "M109 T5", "M190", "M191"}
 
-#define TOOL_CHANGE      {"T0",   "T1",      "T2",      "T3",      "T4",      "T5"}
-#define EXTRUDER_ID      {"E0",   "E1",      "E2",      "E3",      "E4",      "E5"}
+#define TOOL_CHANGE {"T0", "T1", "T2", "T3", "T4", "T5"}
+#define EXTRUDER_ID {"E0", "E1", "E2", "E3", "E4", "E5"}
 
 // Prevent extrusion if the temperature is below set temperature
 #define PREVENT_COLD_EXTRUSION_MINTEMP 180
 
 /**
- * Fan control & Fan type Options:
- *  0: FAN_TYPE_F       - default cooling fan speed (Check Marlin GCode M106)
- *  1: FAN_TYPE_CTRL_S  - Controller fan speed for stepper or hot bed ON (Check Marlin GCode M710)
- *  2: FAN_TYPE_CTRL_I  - Controller fan idle speed  (Check Marlin gcode - M710)
- *  8: FAN_TYPE_UNKNOWN - Unknown / Not defined
+ * Cooling Fan & Controller Fan
+ * Cooling fan have index from 0 to 5.
+ * Controller fan have two speed (Active and Idle) index 6 and 7.
  */
-#define FAN_MAX_PWM      {       255,       255,       255,       255,       255,       255,       255,       255 };
-#define FAN_DISPLAY_ID   {      "F0",      "F1",      "F2",      "F3",      "F4",      "F5",     "CtL",     "CtI" };
-#define FAN_CMD          { "M106 P0", "M106 P1", "M106 P2", "M106 P3", "M106 P4", "M106 P5",    "M710",    "M710" };
-#define FAN_TYPE         {         0,         0,         0,         0,         0,         0,         1,         2 };
+#define FAN_MAX_PWM    {255,  255,  255,  255,  255,  255,  255,   255}
+#define FAN_DISPLAY_ID {"F0 ", "F1 ", "F2 ", "F3 ", "F4 ", "F5 ", "CtS", "CtI"}
+#define FAN_CMD        {"M106 P0 S%d\n", "M106 P1 S%d\n", "M106 P2 S%d\n", "M106 P3 S%d\n", "M106 P4 S%d\n", "M106 P5 S%d\n", \
+                        "M710 S%d\n",    "M710 I%d\n" }
 
 // Speed/flow rate names displayed in status screen
 #define SPEED_ID {"Sp.", "Fr."}  // (speed, flow rate)
 
 // Axes names displayed in Parameter Settings menu
-#define AXIS_DISPLAY_ID  {"X",  "Y",  "Z",   "E0",  "E1"}  // (X, Y, Z, E0, E1)
+#define AXIS_DISPLAY_ID    {"X", "Y", "Z", "E0", "E1"}  // (X, Y, Z, E0, E1)
+#define STEPPER_DISPLAY_ID {"X", "X2", "Y", "Y2", "Z", "Z2", "E0", "E1"}  // (X, X2, Y, Y2, Z, Z2, E0, E1)
 
 // Default X & Y speed (mm/min)
 #define SPEED_XY_SLOW   1000
@@ -279,6 +320,15 @@
  */
 #define TOUCHMI_SENSOR_VALUE 0  // Default: 0
 
+/**
+ * MBL settings
+ * Apply the "level_z_pos" configurable parameter value as the
+ * starting Z height for each point during MBL process.
+ * If not enabled, you can set the desired starting Z height
+ * in Marlin fw (MANUAL_PROBE_START_Z in Configuration.h).
+ */
+#define ENABLE_MBL_START_Z
+
 // Mesh Leveling Max Grid points
 // Set the maximum number of grid points per dimension.
 #define MESH_GRID_MAX_POINTS_X 15  // (Minimum 1, Maximum 15)
@@ -295,31 +345,31 @@
 #define AUTO_SAVE_LOAD_BL_VALUE 1  // Default: 1
 
 // PID autotune
-#define PID_CMD {"M303 U1 C8 E0", "M303 U1 C8 E1", "M303 U1 C8 E2", "M303 U1 C8 E3", "M303 U1 C8 E4", "M303 U1 C8 E5", "M303 U1 C8 E-1", ""};
+#define PID_CMD_MARLIN {"M303 U1 C8 E0", "M303 U1 C8 E1", "M303 U1 C8 E2", "M303 U1 C8 E3", "M303 U1 C8 E4", "M303 U1 C8 E5", "M303 U1 C8 E-1", ""}
+#define PID_CMD_RRF {"M303 T0", "M303 T1", "M303 T2", "M303 T3", "M303 T4", "M303 T5", "M303 H0", ""}
 #define PID_PROCESS_TIMEOUT (15 * 60000)  // (MilliSeconds, 1 minute = 60000 MilliSeconds)
 
 /**
- * M600 ; emulate M600
- * The TFT intercepts the M600 gcode (filament change) and emulates the logic instead of demanding it to Marlin firmware.
+ * M600: Emulate M600
+ * The TFT intercepts the M600 gcode (filament change) and emulates the logic instead of passing it to Marlin firmware.
  *
  * NOTE: Enable it, in case Marlin firmware does not properly support M600 on the mainboard.
  */
 #define EMULATE_M600 false  // To enabled: true | To disabled: false (Default: true)
 
 /**
- * M601 ; pause print
+ * M601: Pause Print
  * PrusaSlicer can add M601 on certain height.
  * Acts here like manual pause.
  */
 #define NOZZLE_PAUSE_M601
 
 /**
- * M701, M702 ; Marlin filament load unload gcodes support
+ * M701, M702: Marlin filament load unload gcodes support
  * FILAMENT_LOAD_UNLOAD_GCODES option on Marlin configuration_adv.h need to be uncommented.
  * Adds a submenu to the movement menu for selecting load and unload actions.
  */
 #define LOAD_UNLOAD_M701_M702
-
 
 //===========================================================================
 //========================== Other UI Settings ==============================
@@ -428,11 +478,11 @@
 #define SHOW_FAN_PERCENTAGE true  // To enabled: true | To disabled: false (Default: true)
 
 /**
- * Mesh Editor Keyboard on left side
- * By default the Mesh Editor Keyboard is drawn on right side of the screen.
- * Enable MESH_LEFT_KEYBOARD to draw the mesh editor keyboard on left side of the screen.
+ * Keyboard on left side (Mesh Editor, RGB Settings Custom)
+ * By default the keyboard is drawn on right side of the screen.
+ * Enable KEYBOARD_ON_LEFT to draw the keyboard on left side of the screen.
  */
-//#define MESH_LEFT_KEYBOARD
+//#define KEYBOARD_ON_LEFT
 
 //
 // Terminal Keyboard / Numpad settings
@@ -440,7 +490,7 @@
 
 // Terminal Keyboard / Numpad theme
 // Uncomment to enable Material theme for keyboard and Numpad
-#define KEYBOARD_MATERIAL_THEME // Default: disabled
+#define KEYBOARD_MATERIAL_THEME  // Default: disabled
 
 /**
  * Color scheme for the Terminal Keyboard / Numpad
@@ -476,6 +526,52 @@
  */
 #define TERMINAL_KEYBOARD_LAYOUT 0  // Default: 0
 
+/**
+ * Progress bar layout on Printing menu
+ * Uncomment to enable a progress bar with 10% markers.
+ * Comment to enable a standard progress bar.
+ */
+//#define MARKED_PROGRESS_BAR  // Default: disabled
+
+/**
+ * Live text background color rendering technique on Printing menu
+ * Uncomment to enable the sampling and use of a uniform background color across all the icons.
+ * Comment to enable a standard rendering based on the sampling and use, in a pixel by pixel basis,
+ * of the underlying icon background colors.
+ *
+ * NOTE: Enable it only in case all the icons have the same and uniform background color under all
+ *       the live text areas (e.g. applicable to Unified, Round Miracle etc... menu themes).
+ *       If enabled, it speeds up the rendering of the live text and the responsiveness of the TFT,
+ *       so it can improve the print quality.
+ *       Suitable in particular for the TFTs with a not fast HW (e.g. 24, 48 MHz).
+ */
+//#define UNIFORM_LIVE_TEXT_BG_COLOR  // Default: disabled
+
+/**
+ * Show embedded thumbnails of gcode files
+ *
+ * Options: [0: classic, 1: RGB565 bitmap, 2: Base64 PNG]
+ *  classic: RGB565 bitmaps for all possible thumbnail sizes are embedded
+ *    in the gcode file at fixed file offsets. It is fastest to parse but least flexible.
+ *  RGB565 bitmap:
+ *    A specific thumbnail comment identifies the location of a  single 'classic'
+ *    embedded RB565 bitmap thumbnail. It is almost as fast as classic and
+ *    flexible but requires a dedicated post-processing of gcode files for
+ *    most slicers. "Classic" is used as fallback.
+ *  Base64 PNG:
+ *    A specific thumbnail comment identifies the location of a Base64-encoded
+ *    PNG thumbnail. It is slower as classic but most flexible. It does _not_
+ *    require dedicated post-processing of gcode files for most slicers.
+ *    "RGB565 bitmap" and "Classic" are used as fallback.
+ *
+ *  Restrictions:
+ *    "Base64 PNG" option utilizes about 43kb statically allocated RAM and
+ *    about 1kb dynamically allocated RAM. Therefore this option is only suitable
+ *    for devices >96KB RAM.
+ *    If you choose "Base64 PNG" on such a low RAM device it will automatically
+ *    downgraded to "RGB565 bitmap" option.
+ */
+#define THUMBNAIL_PARSER 0  // Default: 0
 
 //===========================================================================
 //=========================== Other Settings ================================
@@ -493,9 +589,24 @@
  */
 #define AUTO_SHUT_DOWN_MAXTEMP 50
 
-//
-// Filament Runout Settings (if connected to TFT controller)
-//
+/**
+ * Filament Runout Settings (if connected to TFT controller only)
+ *
+ * Select the type of filament/runout sensor and its default enabled/disabled state.
+ *
+ * NOTE: If the sensor is connected to the board, then this must be set to 0 (Disabled) or 'OFF' in
+ *       the TFT Display. It is recommended to add a M75 code to the 'start_gcode' option and add a
+ *       M77 code to the 'end_gcode' and enable both in config.ini file.
+ *
+ *       Example (in config.ini):
+ *         end_gcode_enabled:1
+ *         start_gcode_enabled:1
+ *         start_gcode:M75\n
+ *         end_gcode:M77\n
+ *
+ * Options: [0: Normal Disabled, 1: Normal Enabled, 2: Smart Disabled, 3: Smart Enabled]
+*/
+#define FIL_SENSOR_TYPE 1
 
 // Filament runout detection
 #define FIL_RUNOUT_INVERTING false  // Set to false to invert the logic of the sensor. (Default: true)

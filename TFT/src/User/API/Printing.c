@@ -3,15 +3,18 @@
 
 typedef struct
 {
-  FIL      file;
-  uint32_t time;        // Printed time in sec
-  uint32_t size;        // Gcode file total size
-  uint32_t cur;         // Gcode has printed file size
-  uint8_t  progress;
-  bool     runout;      // 1: runout in printing, 0: idle
-  bool     printing;    // 1: means printing, 0: means idle
-  bool     pause;       // 1: means paused
-  bool     m0_pause;    // 1: pause triggered through M0/M1 gcode
+  FIL        file;
+  uint32_t   time;                // current elapsed time in sec
+  uint32_t   remainingTime;       // current remaining time in sec (if set with M73 or M117)
+  uint32_t   size;                // Gcode file total size
+  uint32_t   cur;                 // Gcode has printed file size
+  uint8_t    prevProgress;
+  uint8_t    progress;
+  bool       progressFromSlicer;  // 1: progress controlled by Slicer (if set with M73)
+  bool       runout;              // 1: runout in printing, 0: idle
+  bool       printing;            // 1: means printing, 0: means idle
+  bool       pause;               // 1: means paused
+  PAUSE_TYPE pauseType;           // pause type trigged by different sources and gcodes like M0 & M600
 } PRINTING;
 
 PRINTING infoPrinting;
@@ -20,6 +23,11 @@ PRINT_SUMMARY infoPrintSummary = {.name[0] = '\0', 0, 0, 0, 0};
 static bool updateM27_waiting = false;
 static float last_E_pos;
 bool filamentRunoutAlarm;
+
+bool isHostPrinting(void)
+{
+  return (infoHost.printing);
+}
 
 void setRunoutAlarmTrue(void)
 {
@@ -57,13 +65,16 @@ void resumeAndContinue(void)
   Serial_Puts(SERIAL_PORT, "M876 S1\n");
 }
 
-void setPrintTime(uint32_t RTtime)
+void setPrintTime(uint32_t elapsedTime)
 {
-  if (RTtime % 1000 == 0)
+  if (elapsedTime % 1000 == 0)
   {
     if (infoPrinting.printing && !infoPrinting.pause)
     {
       infoPrinting.time++;
+
+      if (infoPrinting.remainingTime > 0  && !heatHasWaiting())
+        infoPrinting.remainingTime--;
     }
   }
 }
@@ -78,6 +89,39 @@ void getPrintTimeDetail(uint8_t * hour, uint8_t * min, uint8_t * sec)
   *hour = infoPrinting.time / 3600;
   *min = infoPrinting.time % 3600 / 60;
   *sec = infoPrinting.time % 60;
+}
+
+void setPrintRemainingTime(int32_t remainingTime)
+{
+  float speedFactor = (float) (speedGetCurPercent(0)) / 100;  // speed (feed rate) factor (e.g. 50% -> 0.5)
+
+  // Cura Slicer put a negative value at the end instead of zero
+  if (remainingTime < 0 || speedFactor <= 0.0f)
+    remainingTime = 0;
+  else
+    remainingTime = remainingTime / speedFactor;  // remaining time = slicer remaining time / speed factor
+
+  infoPrinting.remainingTime = remainingTime;
+}
+
+void parsePrintRemainingTime(char * buffer)
+{
+  int hour, min, sec;
+
+  sscanf(buffer, "%dh%dm%ds", &hour, &min, &sec);
+  setPrintRemainingTime(((int32_t) (hour) * 3600) + ((int32_t) (min) * 60) + (int32_t) (sec));
+}
+
+uint32_t getPrintRemainingTime()
+{
+  return infoPrinting.remainingTime;
+}
+
+void getPrintRemainingTimeDetail(uint8_t * hour, uint8_t * min, uint8_t * sec)
+{
+  *hour = infoPrinting.remainingTime / 3600;
+  *min = infoPrinting.remainingTime % 3600 / 60;
+  *sec = infoPrinting.remainingTime % 60;
 }
 
 uint32_t getPrintSize(void)
@@ -96,18 +140,31 @@ void setPrintProgress(float cur, float size)
   infoPrinting.size = size;
 }
 
+void setPrintProgressPercentage(uint8_t percentage)
+{
+  infoPrinting.progressFromSlicer = true;  // set to true to force a progress controlled by slicer
+  infoPrinting.progress = percentage;
+}
+
 bool updatePrintProgress(void)
 {
-  uint8_t curProgress = infoPrinting.progress;
+  uint8_t prevProgress = infoPrinting.prevProgress;
 
-  // in case not printing or a wrong size was set, we consider progress as 100%
-  if (infoPrinting.size == 0)  // avoid a division for 0 (a crash) and set progress to 100%
-    infoPrinting.progress = 100;
-  else
-    infoPrinting.progress = MIN((uint64_t)infoPrinting.cur * 100 / infoPrinting.size, 100);
+  if (!infoPrinting.progressFromSlicer)  // avoid to update progress if it is controlled by slicer
+  {
+    // in case not printing or a wrong size was set, we consider progress as 100%
+    if (infoPrinting.size == 0)  // avoid a division for 0 (a crash) and set progress to 100%
+      infoPrinting.progress = 100;
+    else
+      infoPrinting.progress = MIN((uint64_t)infoPrinting.cur * 100 / infoPrinting.size, 100);
+  }
 
-  if (infoPrinting.progress != curProgress)
+  if (infoPrinting.progress != prevProgress)
+  {
+    infoPrinting.prevProgress = infoPrinting.progress;
+
     return true;
+  }
 
   return false;
 }
@@ -133,7 +190,7 @@ void shutdown(void)
 {
   for (uint8_t i = 0; i < infoSettings.fan_count; i++)
   {
-    if (fanIsType(i, FAN_TYPE_F)) mustStoreCmd("%s S0\n", fanCmd[i]);
+    mustStoreCmd(fanCmd[i], 0);
   }
 
   mustStoreCmd("M81\n");
@@ -165,7 +222,7 @@ void shutdownStart(void)
 
   for (uint8_t i = 0; i < infoSettings.fan_count; i++)
   {
-    if (fanIsType(i, FAN_TYPE_F)) mustStoreCmd("%s S255\n", fanCmd[i]);
+    mustStoreCmd(fanCmd[i], infoSettings.fan_max[i]);
   }
 
   setDialogText(LABEL_SHUT_DOWN, (uint8_t *)tempstr, LABEL_FORCE_SHUT_DOWN, LABEL_CANCEL);
@@ -270,9 +327,7 @@ static inline void printRemoteStart(void)
   infoPrinting.size = 1;  // .size should be different with .cur to avoid 100% progress on TFT, Get the correct value by M27
   infoPrinting.printing = true;
 
-  if (infoMachineSettings.autoReportSDStatus == 1)
-    request_M27(infoSettings.m27_refresh_time);  // check if there is a print running from onboard SD or remote host (USB)
-
+  request_M27(infoSettings.m27_refresh_time);  // check if there is a print running from onboard SD or remote host (USB)
   initPrintSummary();  // init print summary
 
   infoMenu.cur = 1;  // Clear menu buffer when printing menu is active by remote
@@ -293,9 +348,7 @@ void printStart(FIL * file, uint32_t size)
     case BOARD_SD_REMOTE:  // present just to make the code robust. It should never been executed
     case BOARD_SD:
       //infoHost.printing = true;  // Not so fast! Let Marlin tell that he's done!
-
-      if (infoMachineSettings.autoReportSDStatus == 1)
-        request_M27(infoSettings.m27_refresh_time);  // check if there is a print running from onboard SD or remote host (USB)
+      request_M27(infoSettings.m27_refresh_time);  // check if there is a print running from onboard SD or remote host (USB)
       break;
 
     case TFT_UDISK:
@@ -319,8 +372,8 @@ void printEnd(void)
   {
     case BOARD_SD_REMOTE:
     case BOARD_SD:
-      if (infoMachineSettings.autoReportSDStatus == 1)
-        request_M27(0);
+      request_M27(0);
+      coordinateQuery(0);  // disable auto report position
       break;
 
     case TFT_UDISK:
@@ -332,7 +385,8 @@ void printEnd(void)
   powerFailedClose();
   powerFailedDelete();
 
-  infoPrinting.cur = infoPrinting.size;  // always update the print progress to 100% even if the print was abaorted
+  infoPrinting.cur = infoPrinting.size;  // always update the print progress to 100% even if the print terminated
+  setPrintRemainingTime(0);
   infoPrinting.printing = infoPrinting.pause = false;
   preparePrintSummary();  // update print summary. infoPrinting are used
 
@@ -347,7 +401,6 @@ void printEnd(void)
 void printComplete(void)
 {
   BUZZER_PLAY(sound_success);
-
   printEnd();
 
   if (infoSettings.auto_off)  // Auto shut down after print
@@ -393,14 +446,13 @@ void printAbort(void)
         request_M0();  // M524 is not supportet in reprap firmware
       }
 
-      setDialogText(LABEL_SCREEN_INFO, LABEL_BUSY, LABEL_BACKGROUND, LABEL_BACKGROUND);
-      showDialog(DIALOG_TYPE_INFO, NULL, NULL, NULL);
-
-      do
+      if (infoHost.printing)
       {
-        loopProcess();  // NOTE: it is executed at leat one time to print the above splash screen
+        setDialogText(LABEL_SCREEN_INFO, LABEL_BUSY, LABEL_BACKGROUND, LABEL_BACKGROUND);
+        showDialog(DIALOG_TYPE_INFO, NULL, NULL, NULL);
+
+        loopProcessToCondition(&isHostPrinting);  // wait for the printer to settle down
       }
-      while (infoHost.printing == true);  // wait for the printer to settle down
       break;
 
     case TFT_UDISK:
@@ -418,24 +470,23 @@ void printAbort(void)
   loopDetected = false;
 }
 
-bool printPause(bool is_pause, bool is_m0pause)
+bool printPause(bool isPause, PAUSE_TYPE pauseType)
 {
   // used to avoid a possible loop in case a pause gcode (e.g. M25) is present in
   // the queue infoCmd and the function loopProcess() is invoked by this function
   static bool loopDetected = false;
 
-  if (loopDetected)                   return false;
-  if (!infoPrinting.printing)         return false;
-  if (infoPrinting.pause == is_pause) return false;
+  if (loopDetected)                  return false;
+  if (!infoPrinting.printing)        return false;
+  if (infoPrinting.pause == isPause) return false;
 
   loopDetected = true;
-  infoPrinting.pause = is_pause;
 
   switch (infoFile.source)
   {
     case BOARD_SD_REMOTE:
     case BOARD_SD:
-      if (infoPrinting.pause)
+      if (isPause)
         request_M25();   // pause
       else
         request_M24(0);  // resume
@@ -443,80 +494,89 @@ bool printPause(bool is_pause, bool is_m0pause)
 
     case TFT_UDISK:
     case TFT_SD:
-      if (infoPrinting.pause == true && is_m0pause == false)
-      {
-        while (infoCmd.count != 0) {loopProcess();}
-      }
+      if (isPause == true && pauseType == PAUSE_M0)
+        loopProcessToCondition(&isNotEmptyCmdQueue);  // wait for the communication to be clean
 
       static COORDINATE tmp;
       bool isCoorRelative = coorGetRelative();
       bool isExtrudeRelative = eGetRelative();
 
-      if (infoPrinting.pause)  // pause
+      if (isPause)  // pause
       {
         // restore status before pause
         // if pause was triggered through M0/M1 then break
-        if (is_m0pause == true)
+        if (pauseType == PAUSE_M0)
         {
-          infoPrinting.m0_pause = is_m0pause;
           popupReminder(DIALOG_TYPE_ALERT, LABEL_PAUSE, LABEL_PAUSE);
           break;
         }
 
-        coordinateGetAll(&tmp);
-
-        if (isCoorRelative == true)    mustStoreCmd("G90\n");
-        if (isExtrudeRelative == true) mustStoreCmd("M82\n");
-
-        if (heatGetCurrentTemp(heatGetCurrentHotend()) > infoSettings.min_ext_temp)
+        // do not send any command if the pause originated outside TFT
+        if (pauseType < PAUSE_EXTERNAL)
         {
-          mustStoreCmd("G1 E%.5f F%d\n", tmp.axis[E_AXIS] - infoSettings.pause_retract_len,
-                       infoSettings.pause_feedrate[FEEDRATE_E]);
+          coordinateGetAll(&tmp);
+
+          if (isCoorRelative == true)    mustStoreCmd("G90\n");
+          if (isExtrudeRelative == true) mustStoreCmd("M82\n");
+
+          if (heatGetCurrentTemp(heatGetCurrentHotend()) > infoSettings.min_ext_temp)
+          {
+            mustStoreCmd("G1 E%.5f F%d\n", tmp.axis[E_AXIS] - infoSettings.pause_retract_len,
+                         infoSettings.pause_feedrate[FEEDRATE_E]);
+          }
+
+          if (coordinateIsKnown())
+          {
+            mustStoreCmd("G1 Z%.3f F%d\n", tmp.axis[Z_AXIS] + infoSettings.pause_z_raise, infoSettings.pause_feedrate[FEEDRATE_Z]);
+            mustStoreCmd("G1 X%.3f Y%.3f F%d\n", infoSettings.pause_pos[X_AXIS], infoSettings.pause_pos[Y_AXIS],
+                         infoSettings.pause_feedrate[FEEDRATE_XY]);
+          }
+
+          if (isCoorRelative == true)    mustStoreCmd("G91\n");
+          if (isExtrudeRelative == true) mustStoreCmd("M83\n");
         }
 
-        if (coordinateIsKnown())
-        {
-          mustStoreCmd("G1 Z%.3f F%d\n", tmp.axis[Z_AXIS] + infoSettings.pause_z_raise, infoSettings.pause_feedrate[FEEDRATE_Z]);
-          mustStoreCmd("G1 X%.3f Y%.3f F%d\n", infoSettings.pause_pos[X_AXIS], infoSettings.pause_pos[Y_AXIS],
-                       infoSettings.pause_feedrate[FEEDRATE_XY]);
-        }
-
-        if (isCoorRelative == true)    mustStoreCmd("G91\n");
-        if (isExtrudeRelative == true) mustStoreCmd("M83\n");
+        // store pause type only on pause
+        infoPrinting.pauseType = pauseType;
       }
       else  // resume
       {
-        if (infoPrinting.m0_pause == true)
+        if (infoPrinting.pauseType == PAUSE_M0)
         {
-          infoPrinting.m0_pause = is_m0pause;
           breakAndContinue();  // clear the queue and send a break and continue
           break;
         }
 
-        if (isCoorRelative == true)    mustStoreCmd("G90\n");
-        if (isExtrudeRelative == true) mustStoreCmd("M82\n");
-
-        if (heatGetCurrentTemp(heatGetCurrentHotend()) > infoSettings.min_ext_temp)
+        // do not send any command if the pause originated outside TFT
+        if (infoPrinting.pauseType < PAUSE_EXTERNAL)
         {
-          mustStoreCmd("G1 E%.5f F%d\n", tmp.axis[E_AXIS] - infoSettings.pause_retract_len + infoSettings.resume_purge_len,
-                       infoSettings.pause_feedrate[FEEDRATE_E]);
+          if (isCoorRelative == true)    mustStoreCmd("G90\n");
+          if (isExtrudeRelative == true) mustStoreCmd("M82\n");
+
+          if (heatGetCurrentTemp(heatGetCurrentHotend()) > infoSettings.min_ext_temp)
+          {
+            mustStoreCmd("G1 E%.5f F%d\n", tmp.axis[E_AXIS] - infoSettings.pause_retract_len + infoSettings.resume_purge_len,
+                         infoSettings.pause_feedrate[FEEDRATE_E]);
+          }
+
+          if (coordinateIsKnown())
+          {
+            mustStoreCmd("G1 X%.3f Y%.3f F%d\n", tmp.axis[X_AXIS], tmp.axis[Y_AXIS], infoSettings.pause_feedrate[FEEDRATE_XY]);
+            mustStoreCmd("G1 Z%.3f F%d\n", tmp.axis[Z_AXIS], infoSettings.pause_feedrate[FEEDRATE_Z]);
+          }
+
+          mustStoreCmd("G92 E%.5f\n", tmp.axis[E_AXIS]);
+          mustStoreCmd("G1 F%d\n", tmp.feedrate);
+
+          if (isCoorRelative == true)    mustStoreCmd("G91\n");
+          if (isExtrudeRelative == true) mustStoreCmd("M83\n");
         }
-
-        if (coordinateIsKnown())
-        {
-          mustStoreCmd("G1 X%.3f Y%.3f F%d\n", tmp.axis[X_AXIS], tmp.axis[Y_AXIS], infoSettings.pause_feedrate[FEEDRATE_XY]);
-          mustStoreCmd("G1 Z%.3f F%d\n", tmp.axis[Z_AXIS], infoSettings.pause_feedrate[FEEDRATE_Z]);
-        }
-
-        mustStoreCmd("G92 E%.5f\n", tmp.axis[E_AXIS]);
-        mustStoreCmd("G1 F%d\n", tmp.feedrate);
-
-        if (isCoorRelative == true)    mustStoreCmd("G91\n");
-        if (isExtrudeRelative == true) mustStoreCmd("M83\n");
       }
+
       break;
   }
 
+  infoPrinting.pause = isPause; // update pause status after pause/resume procedure
   loopDetected = false;
 
   return true;
@@ -548,18 +608,21 @@ void setPrintAbort(void)
   // if printing from onboard SD or remote host
   if (infoPrinting.printing && infoFile.source >= BOARD_SD)
   {
-    if (infoMachineSettings.autoReportSDStatus == 1)
-      request_M27(0);
+    request_M27(0);
+    coordinateQuery(0);
   }
 
-  infoPrinting.cur = infoPrinting.size;
+  infoPrinting.cur = infoPrinting.size;  // always update the print progress to 100% even if the print was abaorted
   infoPrinting.printing = infoPrinting.pause = false;
 }
 
-void setPrintPause(bool updateHost)
+void setPrintPause(bool updateHost, PAUSE_TYPE pauseType)
 {
   if (infoPrinting.printing)
+  {
     infoPrinting.pause = true;
+    infoPrinting.pauseType = pauseType;
+  }
 
   if (updateHost)
     infoHost.printing = false;
@@ -587,13 +650,13 @@ void loopPrintFromTFT(void)
   uint8_t sd_count = 0;
   UINT    br = 0;
 
-  if (!infoPrinting.printing || infoFile.source >= BOARD_SD) return;
-
-  powerFailedCache(infoPrinting.file.fptr);
-
   if (heatHasWaiting() || infoCmd.count || infoPrinting.pause) return;
 
   if (moveCacheToCmd() == true) return;
+
+  if (!infoPrinting.printing || infoFile.source >= BOARD_SD) return;
+
+  powerFailedCache(infoPrinting.file.fptr);
 
   for (; infoPrinting.cur < infoPrinting.size;)
   {

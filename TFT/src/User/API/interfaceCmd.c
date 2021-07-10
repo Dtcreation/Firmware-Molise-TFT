@@ -6,6 +6,16 @@ GCODE_QUEUE infoCacheCmd;  // Only when heatHasWaiting() is false the cmd in thi
 static uint8_t cmd_index = 0;
 static bool ispolling = true;
 
+bool isFullCmdQueue(void)
+{
+  return (infoCmd.count >= CMD_MAX_LIST);
+}
+
+bool isNotEmptyCmdQueue(void)
+{
+  return (infoCmd.count || infoHost.wait);
+}
+
 // Is there a code character in the current gcode command.
 static bool cmd_seen(char code)
 {
@@ -32,13 +42,11 @@ static float cmd_float(void)
   return (strtod(&infoCmd.queue[infoCmd.index_r].gcode[cmd_index], NULL));
 }
 
-#if defined(SERIAL_PORT_2) || defined(BUZZER_PIN)
 // check if 'string' start with 'search'
-bool static startsWith(TCHAR *search, TCHAR *string)
+static bool startsWith(TCHAR *search, TCHAR *string)
 {
   return (strstr(string, search) - string == cmd_index) ? true : false;
 }
-#endif
 
 // Common store cmd
 void commonStoreCmd(GCODE_QUEUE *pQueue, const char* format, va_list va)
@@ -81,11 +89,10 @@ void mustStoreCmd(const char * format,...)
   GCODE_QUEUE *pQueue = &infoCmd;
 
   if (pQueue->count >= CMD_MAX_LIST)
+  {
     reminderMessage(LABEL_BUSY, STATUS_BUSY);
 
-  while (pQueue->count >= CMD_MAX_LIST)
-  {
-    loopProcess();
+    loopProcessToCondition(&isFullCmdQueue);  // wait for a free slot in the queue in case the queue is currently full
   }
 
   va_list va;
@@ -152,11 +159,11 @@ void mustStoreCacheCmd(const char * format,...)
 {
   GCODE_QUEUE *pQueue = &infoCacheCmd;
 
-  if (pQueue->count == CMD_MAX_LIST) reminderMessage(LABEL_BUSY, STATUS_BUSY);
-
-  while (pQueue->count >= CMD_MAX_LIST)
+  if (pQueue->count >= CMD_MAX_LIST)
   {
-    loopProcess();
+    reminderMessage(LABEL_BUSY, STATUS_BUSY);
+
+    loopProcessToCondition(&isFullCmdQueue);  // wait for a free slot in the queue in case the queue is currently full
   }
 
   va_list va;
@@ -187,29 +194,27 @@ void clearCmdQueue(void)
 }
 
 // remove last line from cmd queue
-void purgeLastCmd(void)
+void purgeLastCmd(bool purged, bool avoidTerminal)
 {
+  char * purgeStr = "[Purged] ";
+
+  if (!avoidTerminal)
+  {
+    if(purged)
+      terminalCache(purgeStr, TERMINAL_GCODE);
+    terminalCache(infoCmd.queue[infoCmd.index_r].gcode, TERMINAL_GCODE);
+  }
+
+  #if defined(SERIAL_DEBUG_PORT) && defined(DEBUG_SERIAL_COMM)
+    // dump serial data sent to debug port
+    Serial_Puts(SERIAL_DEBUG_PORT, ">>");
+    if (purged)
+      Serial_Puts(SERIAL_DEBUG_PORT, purgeStr);
+    Serial_Puts(SERIAL_DEBUG_PORT, infoCmd.queue[infoCmd.index_r].gcode);
+  #endif
+
   infoCmd.count--;
   infoCmd.index_r = (infoCmd.index_r + 1) % CMD_MAX_LIST;
-}
-
-void dequeueLastCmd(char * gcode)
-{
-  strncpy(gcode, infoCmd.queue[infoCmd.index_r].gcode, CMD_MAX_CHAR);
-
-  setCurrentAckSrc(infoCmd.queue[infoCmd.index_r].src);
-
-  purgeLastCmd();
-}
-
-void sendDequeuedCmd(char * gcode, bool avoid_terminal)
-{
-  Serial_Puts(SERIAL_PORT, gcode);
-
-  if (avoid_terminal != true)
-    terminalCache(gcode, TERMINAL_GCODE);
-
-  infoHost.wait = infoHost.connected;
 }
 
 // Parse and send gcode cmd in infoCmd.
@@ -226,7 +231,7 @@ void sendQueueCmd(void)
 
   if (!ispolling && fromTFT)
   { // ignore any query from TFT
-    purgeLastCmd();
+    purgeLastCmd(true, avoid_terminal);
     return;
   }
 
@@ -247,26 +252,21 @@ void sendQueueCmd(void)
         case 1:
           if (isPrinting() && infoMachineSettings.firmwareType != FW_REPRAPFW)  // Abort printing by "M0" in RepRapFirmware
           {
-            // firstly dequeue the gcode to avoid a possible reprocessing or infinite nested loop in case
-            // the function loopProcess() is invoked by the following function printPause()
-            char gcode[CMD_MAX_CHAR];
-            dequeueLastCmd(gcode);
-
-            if (printPause(true, true))  // if print successfully paused, send the gcode
-              sendDequeuedCmd(gcode, avoid_terminal);
-            return;
+            // pause if printing from TFT and purge M0/M1 command.
+            if (infoFile.source < BOARD_SD )
+            {
+              purgeLastCmd(true, avoid_terminal);
+              printPause(true, PAUSE_M0);
+              return;
+            }
           }
           break;
 
         case 18:  // M18/M84 disable steppers
         case 84:
-          if (cmd_seen('S') && !cmd_seen('Y') && !cmd_seen('Z') && !cmd_seen('E'))
-          {
-            // Do not mark coordinate as unknown in this case as this is a M18/M84 S<timeout>
-            // command that doesn't disable the motors right away but will set their idling
-            // timeout.
-          }
-          else
+          // Do not mark coordinate as unknown in case of a M18/M84 S<timeout> command that
+          // doesn't disable the motors right away but will set their idling timeout.
+          if (!(cmd_seen('S') && !cmd_seen('Y') && !cmd_seen('Z') && !cmd_seen('E')))
           {
             // This is something else than an "M18/M84 S<timeout>", this will disable at least one stepper, set coordinate as unknown
             coordinateSetKnown(false);
@@ -284,6 +284,7 @@ void sendQueueCmd(void)
                   infoFile.source = TFT_SD;
                 else
                   infoFile.source = TFT_UDISK;
+
                 strncpy(infoFile.title, &infoCmd.queue[infoCmd.index_r].gcode[cmd_index + 4], MAX_PATH_LEN);
                 // strip out any checksum that might be in the string
                 for (int i = 0; i < MAX_PATH_LEN && infoFile.title[i] != 0; i++)
@@ -310,7 +311,7 @@ void sendQueueCmd(void)
                   }
                 }
                 Serial_Puts(SERIAL_PORT_2, "End file list\nok\n");
-                purgeLastCmd();
+                purgeLastCmd(true, avoid_terminal);
                 return;
               }
             }
@@ -326,6 +327,7 @@ void sendQueueCmd(void)
                   infoFile.source = TFT_SD;
                 else
                   infoFile.source = TFT_UDISK;
+
                 resetInfoFile();
                 strncpy(infoFile.title, &infoCmd.queue[infoCmd.index_r].gcode[cmd_index + 4], MAX_PATH_LEN);
                 // strip out any checksum that might be in the string
@@ -337,9 +339,11 @@ void sendQueueCmd(void)
                     break;
                   }
                 }
+
                 Serial_Puts(SERIAL_PORT_2, "echo:Now fresh file: ");
                 Serial_Puts(SERIAL_PORT_2, infoFile.title);
                 Serial_Puts(SERIAL_PORT_2, "\n");
+
                 FIL tmp;
                 if (mountFS() && (f_open(&tmp, infoFile.title, FA_OPEN_EXISTING | FA_READ) == FR_OK))
                 {
@@ -359,7 +363,7 @@ void sendQueueCmd(void)
                   Serial_Puts(SERIAL_PORT_2, "\n");
                 }
                 Serial_Puts(SERIAL_PORT_2, "ok\n");
-                purgeLastCmd();
+                purgeLastCmd(true, avoid_terminal);
                 return;
               }
             }
@@ -372,7 +376,7 @@ void sendQueueCmd(void)
               {
                 // firstly purge the gcode to avoid a possible reprocessing or infinite nested loop in
                 // case the function loopProcess() is invoked by the following function printPause()
-                purgeLastCmd();
+                purgeLastCmd(true, avoid_terminal);
                 Serial_Puts(SERIAL_PORT_2, "ok\n");
 
                 if (!isPrinting())  // if not printing, start a new print
@@ -382,7 +386,7 @@ void sendQueueCmd(void)
                 }
                 else  // if printing, resume the print, in case it is paused, or continue to print
                 {
-                  printPause(false, false);
+                  printPause(false, PAUSE_NORMAL);
                 }
                 return;
               }
@@ -397,9 +401,8 @@ void sendQueueCmd(void)
                 // firstly purge the gcode to avoid a possible reprocessing or infinite nested loop in
                 // case the function loopProcess() is invoked by the following function printPause()
                 Serial_Puts(SERIAL_PORT_2, "ok\n");
-                purgeLastCmd();
-
-                printPause(true, false);
+                purgeLastCmd(true, avoid_terminal);
+                printPause(true, PAUSE_NORMAL);
                 return;
               }
             }
@@ -420,7 +423,7 @@ void sendQueueCmd(void)
                 sprintf(buf, "%s printing byte %d/%d\n", (infoFile.source == TFT_SD) ? "TFT SD" : "TFT USB", getPrintCur(), getPrintSize());
                 Serial_Puts(SERIAL_PORT_2, buf);
                 Serial_Puts(SERIAL_PORT_2, "ok\n");
-                purgeLastCmd();
+                purgeLastCmd(true, avoid_terminal);
                 return;
               }
             }
@@ -438,11 +441,9 @@ void sendQueueCmd(void)
           case 29:  // M29
             if (!fromTFT)
             {
-              // firstly purge the gcode to avoid a possible reprocessing or infinite nested loop in
-              // case the function loopProcess() is invoked by the following function mustStoreScript()
-              char gcode[CMD_MAX_CHAR];
-              dequeueLastCmd(gcode);
-              sendDequeuedCmd(gcode, avoid_terminal);
+              // force send M29 directly and purge to avoid any loopback
+              Serial_Puts(SERIAL_PORT, infoCmd.queue[infoCmd.index_r].gcode);
+              purgeLastCmd(true, avoid_terminal);
 
               mustStoreScript("M105\nM114\nM220\n");
               storeCmd("M221 D%d\n", heatGetCurrentTool());
@@ -484,7 +485,7 @@ void sendQueueCmd(void)
                   Serial_Puts(SERIAL_PORT_2, filepath);
                   Serial_Puts(SERIAL_PORT_2, ".\nok\n");
                 }
-                purgeLastCmd();
+                purgeLastCmd(true, avoid_terminal);
                 return;
               }
             }
@@ -503,10 +504,10 @@ void sendQueueCmd(void)
               Serial_Puts(SERIAL_PORT_2, buf);
               sprintf(buf, "Cap:FAN_NUM:%d\n", infoSettings.fan_count);
               Serial_Puts(SERIAL_PORT_2, buf);
-              sprintf(buf, "Cap:FAN_CTRL_NUM:%d\n", infoSettings.fan_ctrl_count);
+              sprintf(buf, "Cap:FAN_CTRL_NUM:%d\n", infoSettings.ctrl_fan_en ? MAX_CRTL_FAN_COUNT : 0);
               Serial_Puts(SERIAL_PORT_2, buf);
               Serial_Puts(SERIAL_PORT_2, "ok\n");
-              purgeLastCmd();
+              purgeLastCmd(true, avoid_terminal);
               return;
             }
             break;
@@ -519,9 +520,8 @@ void sendQueueCmd(void)
                 // firstly purge the gcode to avoid a possible reprocessing or infinite nested loop in
                 // case the function loopProcess() is invoked by the following function printPause()
                 Serial_Puts(SERIAL_PORT_2, "ok\n");
-                purgeLastCmd();
-
-                printPause(true, false);
+                purgeLastCmd(true, avoid_terminal);
+                printPause(true, PAUSE_NORMAL);
                 return;
               }
             }
@@ -535,8 +535,7 @@ void sendQueueCmd(void)
                 // firstly purge the gcode to avoid a possible reprocessing or infinite nested loop in
                 // case the function loopProcess() is invoked by the following function printAbort()
                 Serial_Puts(SERIAL_PORT_2, "ok\n");
-                purgeLastCmd();
-
+                purgeLastCmd(true, avoid_terminal);
                 printAbort();
                 return;
               }
@@ -548,6 +547,20 @@ void sendQueueCmd(void)
             printSetUpdateWaiting(false);
             break;
         #endif  // not SERIAL_PORT_2
+
+        case 73:
+          if (cmd_seen('P'))
+            setPrintProgressPercentage(cmd_value());
+
+          if (cmd_seen('R'))
+            setPrintRemainingTime((cmd_value() * 60));
+
+          if (!infoMachineSettings.buildPercent)  // if M73 is not supported by Marlin, skip it
+          {
+            purgeLastCmd(true, avoid_terminal);
+            return;
+          }
+          break;
 
         case 80:  // M80
           #ifdef PS_ON_PIN
@@ -571,12 +584,12 @@ void sendQueueCmd(void)
 
         case 92:  // M92 Steps per unit
         {
-          if (cmd_seen('X')) setParameter(P_STEPS_PER_MM, X_AXIS, cmd_float());
-          if (cmd_seen('Y')) setParameter(P_STEPS_PER_MM, Y_AXIS, cmd_float());
-          if (cmd_seen('Z')) setParameter(P_STEPS_PER_MM, Z_AXIS, cmd_float());
-          uint8_t i = 0;
-          if (cmd_seen('T')) i = cmd_value();
-          if (cmd_seen('E')) setParameter(P_STEPS_PER_MM, E_STEPPER + i, cmd_float());
+          if (cmd_seen('X')) setParameter(P_STEPS_PER_MM, AXIS_INDEX_X, cmd_float());
+          if (cmd_seen('Y')) setParameter(P_STEPS_PER_MM, AXIS_INDEX_Y, cmd_float());
+          if (cmd_seen('Z')) setParameter(P_STEPS_PER_MM, AXIS_INDEX_Z, cmd_float());
+
+          uint8_t i = 0; (cmd_seen('T')) ? cmd_value() : 0;
+          if (cmd_seen('E')) setParameter(P_STEPS_PER_MM, AXIS_INDEX_E0 + i, cmd_float());
           break;
         }
 
@@ -608,39 +621,14 @@ void sendQueueCmd(void)
         case 106:  // M106
         {
           uint8_t i = cmd_seen('P') ? cmd_value() : 0;
-          if (cmd_seen('S') && fanIsType(i, FAN_TYPE_F))
-          {
-            fanSetCurSpeed(i, cmd_value());
-          }
-          else if (!cmd_seen('\n'))
-          {
-            char buf[12];
-            sprintf(buf, "S%u\n", fanGetCurSpeed(i));
-            strcat(infoCmd.queue[infoCmd.index_r].gcode, (const char*)buf);
-          }
+          if (cmd_seen('S')) fanSetCurSpeed(i, cmd_value());
           break;
         }
 
         case 107:  // M107
         {
           uint8_t i = cmd_seen('P') ? cmd_value() : 0;
-          if (fanIsType(i, FAN_TYPE_F)) fanSetCurSpeed(i, 0);
-          break;
-        }
-
-        case 710:  // M710 Controller Fan
-        {
-          uint8_t i = 0;
-          if (cmd_seen('S'))
-          {
-            i = fanGetTypID(i, FAN_TYPE_CTRL_S);
-            fanSetCurSpeed(i, cmd_value());
-          }
-          if (cmd_seen('I'))
-          {
-            i = fanGetTypID(0, FAN_TYPE_CTRL_I);
-            fanSetCurSpeed(i, cmd_value());
-          }
+          fanSetCurSpeed(i, 0);
           break;
         }
 
@@ -686,25 +674,33 @@ void sendQueueCmd(void)
           break;
 
         case 117:  // M117
-        {
-          char message[CMD_MAX_CHAR];
-          strncpy(message, &infoCmd.queue[infoCmd.index_r].gcode[cmd_index + 4], CMD_MAX_CHAR);
-          // strip out any checksum that might be in the string
-          for (int i = 0; i < CMD_MAX_CHAR && message[i] != 0 ; i++)
+          if (startsWith("Time Left", &infoCmd.queue[infoCmd.index_r].gcode[cmd_index + 5]))
           {
-            if (message[i] == '*')
+            parsePrintRemainingTime(&infoCmd.queue[infoCmd.index_r].gcode[cmd_index + 14]);
+          }
+          else
+          {
+            char message[CMD_MAX_CHAR];
+
+            strncpy(message, &infoCmd.queue[infoCmd.index_r].gcode[cmd_index + 4], CMD_MAX_CHAR);
+            // strip out any checksum that might be in the string
+            for (int i = 0; i < CMD_MAX_CHAR && message[i] != 0; i++)
             {
-              message[i] = 0;
-              break;
+              if (message[i] == '*')
+              {
+                message[i] = 0;
+                break;
+              }
+            }
+
+            statusScreen_setMsg((uint8_t *)"M117", (uint8_t *)&message);
+
+            if (infoMenu.menu[infoMenu.cur] != menuStatus)
+            {
+              addToast(DIALOG_TYPE_INFO, message);
             }
           }
-          statusScreen_setMsg((uint8_t *)"M117", (uint8_t *)&message);
-          if (infoMenu.menu[infoMenu.cur] != menuStatus)
-          {
-            addToast(DIALOG_TYPE_INFO, message);
-          }
-        }
-        break;
+          break;
 
         case 190:  // M190
           if (fromTFT)
@@ -772,39 +768,39 @@ void sendQueueCmd(void)
 
         case 200:  // M200 Set Filament Diameter
         {
-          if (cmd_seen('S')) setParameter(P_FILAMENT_SETTING, 0, cmd_float());
-          uint8_t i = 0;
-          if (cmd_seen('T')) i = cmd_value();
-          if (cmd_seen('D')) setParameter(P_FILAMENT_SETTING, 1 + i, cmd_float());
-          if (infoMachineSettings.firmwareType == FW_SMOOTHIEWARE) 
+          if (cmd_seen('S')) setParameter(P_FILAMENT_DIAMETER, 0, cmd_float());
+
+          uint8_t i = (cmd_seen('T')) ? cmd_value() : 0;
+          if (cmd_seen('D')) setParameter(P_FILAMENT_DIAMETER, 1 + i, cmd_float());
+          if (infoMachineSettings.firmwareType == FW_SMOOTHIEWARE)
           {
-            if (getParameter(P_FILAMENT_SETTING, 1) > 0.01F)  // common extruder param
-              setParameter(P_FILAMENT_SETTING, 0, 1);  // filament_diameter>0.01 to enable  volumetric extrusion
+            if (getParameter(P_FILAMENT_DIAMETER, 1) > 0.01F)  // common extruder param
+              setParameter(P_FILAMENT_DIAMETER, 0, 1);  // filament_diameter>0.01 to enable  volumetric extrusion
             else
-              setParameter(P_FILAMENT_SETTING, 0, 0);  // filament_diameter<=0.01 to disable volumetric extrusion
+              setParameter(P_FILAMENT_DIAMETER, 0, 0);  // filament_diameter<=0.01 to disable volumetric extrusion
           }
           break;
         }
 
         case 201:  // M201 Maximum Acceleration (units/s2)
         {
-          if (cmd_seen('X')) setParameter(P_MAX_ACCELERATION, X_STEPPER, cmd_float());
-          if (cmd_seen('Y')) setParameter(P_MAX_ACCELERATION, Y_STEPPER, cmd_float());
-          if (cmd_seen('Z')) setParameter(P_MAX_ACCELERATION, Z_STEPPER, cmd_float());
-          uint8_t i = 0;
-          if (cmd_seen('T')) i = cmd_value();
-          if (cmd_seen('E')) setParameter(P_MAX_ACCELERATION, E_STEPPER + i, cmd_float());
+          if (cmd_seen('X')) setParameter(P_MAX_ACCELERATION, AXIS_INDEX_X, cmd_float());
+          if (cmd_seen('Y')) setParameter(P_MAX_ACCELERATION, AXIS_INDEX_Y, cmd_float());
+          if (cmd_seen('Z')) setParameter(P_MAX_ACCELERATION, AXIS_INDEX_Z, cmd_float());
+
+          uint8_t i = (cmd_seen('T')) ? cmd_value() : 0;
+          if (cmd_seen('E')) setParameter(P_MAX_ACCELERATION, AXIS_INDEX_E0 + i, cmd_float());
           break;
         }
 
         case 203:  // M203 Maximum feedrates (units/s)
         {
-          if (cmd_seen('X')) setParameter(P_MAX_FEED_RATE, X_STEPPER, cmd_float());
-          if (cmd_seen('Y')) setParameter(P_MAX_FEED_RATE, Y_STEPPER, cmd_float());
-          if (cmd_seen('Z')) setParameter(P_MAX_FEED_RATE, Z_STEPPER, cmd_float());
-          uint8_t i = 0;
-          if (cmd_seen('T')) i = cmd_value();
-          if (cmd_seen('E')) setParameter(P_MAX_FEED_RATE, E_STEPPER + i, cmd_float());
+          if (cmd_seen('X')) setParameter(P_MAX_FEED_RATE, AXIS_INDEX_X, cmd_float());
+          if (cmd_seen('Y')) setParameter(P_MAX_FEED_RATE, AXIS_INDEX_Y, cmd_float());
+          if (cmd_seen('Z')) setParameter(P_MAX_FEED_RATE, AXIS_INDEX_Z, cmd_float());
+
+          uint8_t i = (cmd_seen('T')) ? cmd_value() : 0;
+          if (cmd_seen('E')) setParameter(P_MAX_FEED_RATE, AXIS_INDEX_E0 + i, cmd_float());
           break;
         }
 
@@ -815,17 +811,17 @@ void sendQueueCmd(void)
           break;
 
         case 205:  // M205 - Set Advanced Settings
-          if (cmd_seen('X')) setParameter(P_JERK, X_AXIS, cmd_float());
-          if (cmd_seen('Y')) setParameter(P_JERK, Y_AXIS, cmd_float());
-          if (cmd_seen('Z')) setParameter(P_JERK, Z_AXIS, cmd_float());
-          if (cmd_seen('E')) setParameter(P_JERK, E_AXIS, cmd_float());
+          if (cmd_seen('X')) setParameter(P_JERK, AXIS_INDEX_X, cmd_float());
+          if (cmd_seen('Y')) setParameter(P_JERK, AXIS_INDEX_Y, cmd_float());
+          if (cmd_seen('Z')) setParameter(P_JERK, AXIS_INDEX_Z, cmd_float());
+          if (cmd_seen('E')) setParameter(P_JERK, AXIS_INDEX_E0, cmd_float());
           if (cmd_seen('J')) setParameter(P_JUNCTION_DEVIATION, 0, cmd_float());
           break;
 
         case 206:  // M206 Home offset
-          if (cmd_seen('X')) setParameter(P_HOME_OFFSET, X_AXIS, cmd_float());
-          if (cmd_seen('Y')) setParameter(P_HOME_OFFSET, Y_AXIS, cmd_float());
-          if (cmd_seen('Z')) setParameter(P_HOME_OFFSET, Z_AXIS, cmd_float());
+          if (cmd_seen('X')) setParameter(P_HOME_OFFSET, AXIS_INDEX_X, cmd_float());
+          if (cmd_seen('Y')) setParameter(P_HOME_OFFSET, AXIS_INDEX_Y, cmd_float());
+          if (cmd_seen('Z')) setParameter(P_HOME_OFFSET, AXIS_INDEX_Z, cmd_float());
           break;
 
         case 207:  // M207 FW Retract
@@ -842,10 +838,14 @@ void sendQueueCmd(void)
           if (cmd_seen('R')) setParameter(P_FWRECOVER, 3, cmd_float());
           break;
 
+        case 209:  // M209 Auto Retract recover
+          if (cmd_seen('S')) setParameter(P_AUTO_RETRACT, 0, cmd_float());
+          break;
+
         case 218:  // M218 Hotend Offset
-          if (cmd_seen('X')) setParameter(P_HOTEND_OFFSET, X_AXIS, cmd_float());
-          if (cmd_seen('Y')) setParameter(P_HOTEND_OFFSET, Y_AXIS, cmd_float());
-          if (cmd_seen('Z')) setParameter(P_HOTEND_OFFSET, Z_AXIS, cmd_float());
+          if (cmd_seen('X')) setParameter(P_HOTEND_OFFSET, AXIS_INDEX_X, cmd_float());
+          if (cmd_seen('Y')) setParameter(P_HOTEND_OFFSET, AXIS_INDEX_Y, cmd_float());
+          if (cmd_seen('Z')) setParameter(P_HOTEND_OFFSET, AXIS_INDEX_Z, cmd_float());
           break;
 
         case 220:  // M220
@@ -869,7 +869,7 @@ void sendQueueCmd(void)
                 Buzzer_TurnOn(hz, ms);
                 if (!fromTFT && startsWith("M300 TFT", infoCmd.queue[infoCmd.index_r].gcode))
                 {
-                  purgeLastCmd();
+                  purgeLastCmd(true, avoid_terminal);
                   return;
                 }
               }
@@ -898,28 +898,30 @@ void sendQueueCmd(void)
           if (cmd_seen('Z')) setParameter(P_ABL_STATE, 1, cmd_float());
           break;
 
-        case 596:  // M596 TMC StealthChop
+        case 569:  // M569 TMC StealthChop
         {
-          uint8_t k = 0;
-          if(cmd_seen('S')) k = cmd_value();
-          if(cmd_seen('X')) setParameter(P_STEALTH_CHOP, X_STEPPER, k);
-          if(cmd_seen('Y')) setParameter(P_STEALTH_CHOP, Y_STEPPER, k);
-          if(cmd_seen('Z')) setParameter(P_STEALTH_CHOP, Z_STEPPER, k);
-          uint8_t i = 0;
-          if(cmd_seen('T')) i = cmd_value();
-          if(cmd_seen('E')) setParameter(P_STEALTH_CHOP, E_STEPPER + i, k);
+          uint8_t k = (cmd_seen('S')) ? cmd_value() : 0;
+          uint8_t i = (cmd_seen('I')) ? cmd_value() : 0;
+          if (cmd_seen('X')) setParameter(P_STEALTH_CHOP, STEPPER_INDEX_X + i, k);
+          if (cmd_seen('Y')) setParameter(P_STEALTH_CHOP, STEPPER_INDEX_Y + i, k);
+          if (cmd_seen('Z')) setParameter(P_STEALTH_CHOP, STEPPER_INDEX_Z + i, k);
+
+          i = (cmd_seen('T')) ? cmd_value() : 0;
+          if (cmd_seen('E')) setParameter(P_STEALTH_CHOP, STEPPER_INDEX_E0 + i, k);
           break;
         }
 
         case 600:  // M600 filament change
-          if (isPrinting() && infoSettings.emulate_m600 == 1)
+          if (isPrinting())
           {
-            // firstly purge the gcode to avoid a possible reprocessing or infinite nested loop in
-            // case the function loopProcess() is invoked by the following function printPause()
-            purgeLastCmd();
-
-            printPause(true, false);
-            return;
+            // purge and pause only if emulated M600 is enabled.
+            // if emulated M600 is disabled then let the printer pause the print to avoid premature pause
+            if (infoSettings.emulate_m600 == 1)
+            {
+              purgeLastCmd(true, avoid_terminal);
+              printPause(true, PAUSE_NORMAL);
+              return;
+            }
           }
           break;
 
@@ -927,12 +929,14 @@ void sendQueueCmd(void)
           case 601:  // M601 print pause (PrusaSlicer)
             if (isPrinting())
             {
-              // firstly purge the gcode to avoid a possible reprocessing or infinite nested loop in
-              // case the function loopProcess() is invoked by the following function printPause()
-              purgeLastCmd();
-
-              printPause(true, false);
-              return;
+              // purge and pause only if emulated M600 is enabled.
+              // if emulated M600 is disabled then let the printer pause the print to avoid premature pause
+              if (infoSettings.emulate_m600 == 1)
+              {
+                purgeLastCmd(true, avoid_terminal);
+                printPause(true, PAUSE_NORMAL);
+                return;
+              }
             }
             break;
         #endif
@@ -943,6 +947,13 @@ void sendQueueCmd(void)
             infoHost.wait = true;
             break;
         #endif
+
+        case 710:  // M710 Controller Fan
+        {
+          if (cmd_seen('S')) fanSetCurSpeed(MAX_COOLING_FAN_COUNT, cmd_value());
+          if (cmd_seen('I')) fanSetCurSpeed(MAX_COOLING_FAN_COUNT + 1, cmd_value());
+          break;
+        }
 
         case 851:  // M851 Z probe offset
         {
@@ -962,37 +973,36 @@ void sendQueueCmd(void)
 
         case 906:  // M906 Stepper driver current
         {
-          if (cmd_seen('X')) setParameter(P_CURRENT, X_AXIS, cmd_value());
-          if (cmd_seen('Y')) setParameter(P_CURRENT, Y_AXIS, cmd_value());
-          if (cmd_seen('Z')) setParameter(P_CURRENT, Z_AXIS, cmd_value());
-          if (cmd_seen('I'))
-          {
-            if (cmd_seen('X')) setDualStepperStatus(X_STEPPER,true);
-            if (cmd_seen('Y')) setDualStepperStatus(Y_STEPPER,true);
-            if (cmd_seen('Z')) setDualStepperStatus(Z_STEPPER,true);
-          }
-          uint8_t i = 0;
-          if (cmd_seen('T')) i = cmd_value();
-          if (cmd_seen('E')) setParameter(P_CURRENT, E_STEPPER + i, cmd_value());
+          uint8_t i = (cmd_seen('I')) ? cmd_value() : 0;
+          if (cmd_seen('X')) setParameter(P_CURRENT, STEPPER_INDEX_X + i, cmd_value());
+          if (cmd_seen('Y')) setParameter(P_CURRENT, STEPPER_INDEX_Y + i, cmd_value());
+          if (cmd_seen('Z')) setParameter(P_CURRENT, STEPPER_INDEX_Z + i, cmd_value());
+
+          i = (cmd_seen('T')) ? cmd_value() : 0;
+          if (cmd_seen('E')) setParameter(P_CURRENT, STEPPER_INDEX_E0 + i, cmd_value());
           break;
         }
 
         case 913:  // M913 Hybrid Threshold Speed
         {
-          if (cmd_seen('X')) setParameter(P_HYBRID_THRESHOLD, X_STEPPER, cmd_value());
-          if (cmd_seen('Y')) setParameter(P_HYBRID_THRESHOLD, Y_STEPPER, cmd_value());
-          if (cmd_seen('Z')) setParameter(P_HYBRID_THRESHOLD, Z_STEPPER, cmd_value());
-          uint8_t i = 0;
-          if (cmd_seen('T')) i = cmd_value();
-          if (cmd_seen('E')) setParameter(P_HYBRID_THRESHOLD, E_STEPPER + i, cmd_value());
+          uint8_t i = (cmd_seen('I')) ? cmd_value() : 0;
+          if (cmd_seen('X')) setParameter(P_HYBRID_THRESHOLD, STEPPER_INDEX_X + i, cmd_value());
+          if (cmd_seen('Y')) setParameter(P_HYBRID_THRESHOLD, STEPPER_INDEX_Y + i, cmd_value());
+          if (cmd_seen('Z')) setParameter(P_HYBRID_THRESHOLD, STEPPER_INDEX_Z + i, cmd_value());
+
+          i = (cmd_seen('T')) ? cmd_value() : 0;
+          if (cmd_seen('E')) setParameter(P_HYBRID_THRESHOLD, STEPPER_INDEX_E0 + i, cmd_value());
           break;
         }
 
         case 914:  // parse and store TMC Bump sensitivity values
-          if (cmd_seen('X')) setParameter(P_BUMPSENSITIVITY, X_STEPPER, cmd_value());
-          if (cmd_seen('Y')) setParameter(P_BUMPSENSITIVITY, Y_STEPPER, cmd_value());
-          if (cmd_seen('Z')) setParameter(P_BUMPSENSITIVITY, Z_STEPPER, cmd_value());
+        {
+          uint8_t i = (cmd_seen('I')) ? cmd_value() : 0;
+          if (cmd_seen('X')) setParameter(P_BUMPSENSITIVITY, STEPPER_INDEX_X + i, cmd_value());
+          if (cmd_seen('Y')) setParameter(P_BUMPSENSITIVITY, STEPPER_INDEX_Y + i, cmd_value());
+          if (cmd_seen('Z')) setParameter(P_BUMPSENSITIVITY, STEPPER_INDEX_Z + i, cmd_value());
           break;
+        }
       }
       break;  // end parsing M-codes
 
@@ -1105,13 +1115,9 @@ void sendQueueCmd(void)
 
   }  // end parsing cmd
 
-  setCurrentAckSrc(infoCmd.queue[infoCmd.index_r].src);
-  Serial_Puts(SERIAL_PORT, infoCmd.queue[infoCmd.index_r].gcode);
-
-  if (avoid_terminal != true)
-    terminalCache(infoCmd.queue[infoCmd.index_r].gcode, TERMINAL_GCODE);
-
   infoHost.wait = infoHost.connected;
 
-  purgeLastCmd();
+  setCurrentAckSrc(infoCmd.queue[infoCmd.index_r].src);
+  Serial_Puts(SERIAL_PORT, infoCmd.queue[infoCmd.index_r].gcode);
+  purgeLastCmd(false, avoid_terminal);
 }  // sendQueueCmd

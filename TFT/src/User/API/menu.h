@@ -5,13 +5,14 @@
 extern "C" {
 #endif
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include "GUI.h"
 
 #define IDLE_TOUCH 0xFFFF
 
 #define ITEM_PER_PAGE     8
+#define PS_TOUCH_OFFSET   2  // print screen touch zone index to menu buttons offset
 #define MENU_RECT_COUNT   (ITEM_PER_PAGE * 2 + 1)      // 8 items + title bar
 #define SS_RECT_COUNT     (ITEM_PER_PAGE * 2 + 1 + 1)  // 8 items + title bar + infobox
 #define TM_RECT_COUNT     (ITEM_PER_PAGE * 2 + 1 + 1)  // 8 items + title bar + tempbox
@@ -44,8 +45,29 @@ typedef enum
   KEY_LABEL_7,
   KEY_TITLEBAR,
   KEY_INFOBOX,
-  KEY_IDLE = IDLE_TOUCH,
+  KEY_PAGEUP   = IDLE_TOUCH - 3,
+  KEY_PAGEDOWN = IDLE_TOUCH - 2,
+  KEY_BACK     = IDLE_TOUCH - 1,
+  KEY_IDLE     = IDLE_TOUCH,
 } KEY_VALUES;
+
+enum
+{
+  PS_TOUCH_0 = 0,
+  PS_TOUCH_1,
+  PS_TOUCH_2,
+  PS_TOUCH_3,
+  PS_TOUCH_4,
+  PS_TOUCH_5,
+  PS_TOUCH_6,
+  PS_TOUCH_7,
+  PS_TOUCH_8,
+  PS_TOUCH_9,
+  PS_TITLEBAR,
+  PS_INFOBOX,
+  PS_DUMMY,
+  PS_COUNT,  // always leave this last item
+};
 
 typedef enum
 {
@@ -63,7 +85,7 @@ typedef union
   void *address;
 } LABEL;
 
-//always initialize label to default values
+// always initialize label to default values
 #define init_label(X) LABEL X = {.index = LABEL_BACKGROUND, .address = NULL}
 
 typedef struct
@@ -122,25 +144,28 @@ typedef struct
 {
   uint8_t *     text;
   GUI_POINT     pos;      // relative to icon top left corner
-  uint8_t       h_align;  //left, right or center of pos point
-  uint8_t       v_align;  //left, right or center of pos point
+  uint8_t       h_align;  // left, right or center of pos point
+  uint8_t       v_align;  // left, right or center of pos point
   uint16_t      fn_color;
   uint16_t      bk_color;
   GUI_TEXT_MODE text_mode;
-  bool          large_font;
+  uint16_t      font;
 } LIVE_DATA;
 
- typedef struct
+typedef struct
 {
   uint8_t   enabled[LIVEICON_LINES];
   LIVE_DATA lines[LIVEICON_LINES];
 } LIVE_INFO;
 
-void showLiveInfo(uint8_t index, const LIVE_INFO * liveicon, const ITEM * item);
+typedef bool (* CONDITION_CALLBACK)(void);
 
 extern const GUI_RECT exhibitRect;
 extern const GUI_RECT rect_of_key[MENU_RECT_COUNT];
 extern const GUI_RECT rect_of_keySS[SS_RECT_COUNT];
+extern GUI_RECT rect_of_touchPS[SS_RECT_COUNT];
+extern const GUI_RECT touchPS_elements[PS_COUNT];
+
 extern const GUI_RECT rect_of_titleBar[1];
 
 void setMenuType(MENU_TYPE type);
@@ -168,13 +193,20 @@ void menuDrawTitle(const uint8_t *content);  //(const MENUITEMS * menuItems);
 void menuReDrawCurTitle(void);
 void menuDrawPage (const MENUITEMS * menuItems);
 void menuDrawListPage(const LISTITEMS *listItems);
+
+void showLiveInfo(uint8_t index, const LIVE_INFO * liveicon, const ITEM * item);
+void displayExhibitHeader(const char * titleStr, const char * unitStr);
+void displayExhibitValue(const char * valueStr);
+
 void itemDrawIconPress(uint8_t position, uint8_t is_press);
+void itemDrawIconPress_PS(uint8_t position, uint8_t is_press);
 KEY_VALUES menuKeyGetValue(void);
 GUI_POINT getIconStartPoint(int index);
 
 void loopBackEnd(void);
 void loopFrontEnd(void);
-void loopProcess (void);
+void loopProcess(void);
+void loopProcessToCondition(CONDITION_CALLBACK condCallback);
 
 #ifdef __cplusplus
 }
