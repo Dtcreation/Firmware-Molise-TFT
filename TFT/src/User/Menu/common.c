@@ -8,6 +8,7 @@ SCROLL scrollLine;
 
 // indexes for status icon toggles
 uint8_t currentTool = NOZZLE0;
+uint8_t currentBCIndex = 0;
 uint8_t currentFan = 0;
 uint8_t currentSpeedID = 0;
 static uint32_t lastTime = 0;
@@ -119,7 +120,7 @@ bool nextScreenUpdate(uint32_t duration)
 #ifdef FRIENDLY_Z_OFFSET_LANGUAGE
   void invertZAxisIcons(MENUITEMS * menuItems)
   {
-    if (infoSettings.invert_axis[Z_AXIS] == 1)
+    if (GET_BIT(infoSettings.inverted_axis, Z_AXIS))
     {
       menuItems->items[KEY_ICON_0].icon = ICON_Z_INC;
       menuItems->items[KEY_ICON_0].label.index = LABEL_UP;
@@ -274,6 +275,12 @@ int32_t editIntValue(int32_t minValue, int32_t maxValue, int32_t resetValue, int
   sprintf(tempstr, "Min:%i | Max:%i", minValue, maxValue);
   val = numPadInt((uint8_t *) tempstr, value, resetValue, false);
 
+  // redraw menu
+  if (getMenuType() == MENU_TYPE_ICON)
+    menuDrawPage(getCurMenuItems());
+  else if(getMenuType() == MENU_TYPE_LISTVIEW)
+    listViewRefreshMenu();
+
   return NOBEYOND(minValue, val, maxValue);
 }
 
@@ -285,6 +292,12 @@ float editFloatValue(float minValue, float maxValue, float resetValue, float val
 
   sprintf(tempstr, "Min:%.2f | Max:%.2f", minValue, maxValue);
   val = numPadFloat((uint8_t *) tempstr, value, resetValue, true);
+
+  // redraw menu
+  if (getMenuType() == MENU_TYPE_ICON)
+    menuDrawPage(getCurMenuItems());
+  else if(getMenuType() == MENU_TYPE_LISTVIEW)
+    listViewRefreshMenu();
 
   return NOBEYOND(minValue, val, maxValue);
 }

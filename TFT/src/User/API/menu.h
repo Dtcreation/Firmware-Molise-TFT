@@ -12,7 +12,7 @@ extern "C" {
 #define IDLE_TOUCH 0xFFFF
 
 #define ITEM_PER_PAGE     8
-#define PS_TOUCH_OFFSET   2  // print screen touch zone index to menu buttons offset
+#define PS_TOUCH_OFFSET   2  // printing screen icon index offset for touch input
 #define MENU_RECT_COUNT   (ITEM_PER_PAGE * 2 + 1)      // 8 items + title bar
 #define SS_RECT_COUNT     (ITEM_PER_PAGE * 2 + 1 + 1)  // 8 items + title bar + infobox
 #define TM_RECT_COUNT     (ITEM_PER_PAGE * 2 + 1 + 1)  // 8 items + title bar + tempbox
@@ -45,29 +45,29 @@ typedef enum
   KEY_LABEL_7,
   KEY_TITLEBAR,
   KEY_INFOBOX,
+  KEY_INCREASE = IDLE_TOUCH - 5,
+  KEY_DECREASE = IDLE_TOUCH - 4,
   KEY_PAGEUP   = IDLE_TOUCH - 3,
   KEY_PAGEDOWN = IDLE_TOUCH - 2,
   KEY_BACK     = IDLE_TOUCH - 1,
   KEY_IDLE     = IDLE_TOUCH,
 } KEY_VALUES;
 
-enum
+typedef enum
 {
-  PS_TOUCH_0 = 0,
-  PS_TOUCH_1,
-  PS_TOUCH_2,
-  PS_TOUCH_3,
-  PS_TOUCH_4,
-  PS_TOUCH_5,
-  PS_TOUCH_6,
-  PS_TOUCH_7,
-  PS_TOUCH_8,
-  PS_TOUCH_9,
-  PS_TITLEBAR,
-  PS_INFOBOX,
-  PS_DUMMY,
-  PS_COUNT,  // always leave this last item
-};
+  PS_KEY_0 = 0,
+  PS_KEY_1,
+  PS_KEY_2,
+  PS_KEY_3,
+  PS_KEY_4,
+  PS_KEY_5,
+  PS_KEY_6,
+  PS_KEY_7,
+  PS_KEY_8,
+  PS_KEY_9,
+  PS_KEY_TITLEBAR,
+  PS_KEY_INFOBOX,
+} PS_KEY_VALUES;
 
 typedef enum
 {
@@ -86,7 +86,7 @@ typedef union
 } LABEL;
 
 // always initialize label to default values
-#define init_label(X) LABEL X = {.index = LABEL_BACKGROUND, .address = NULL}
+#define init_label(X) LABEL X = {.index = LABEL_BACKGROUND}
 
 typedef struct
 {
@@ -104,7 +104,8 @@ typedef enum
 {
   STATUS_IDLE = 0,
   STATUS_BUSY,
-  STATUS_UNCONNECT,
+  STATUS_DISCONNECTED,
+  STATUS_LISTENING,
   STATUS_NORMAL
 } SYS_STATUS;
 
@@ -163,15 +164,14 @@ typedef bool (* CONDITION_CALLBACK)(void);
 extern const GUI_RECT exhibitRect;
 extern const GUI_RECT rect_of_key[MENU_RECT_COUNT];
 extern const GUI_RECT rect_of_keySS[SS_RECT_COUNT];
-extern GUI_RECT rect_of_touchPS[SS_RECT_COUNT];
-extern const GUI_RECT touchPS_elements[PS_COUNT];
+extern const GUI_RECT rect_of_keyPS[];
+extern const GUI_RECT rect_of_keyPS_end[];
 
 extern const GUI_RECT rect_of_titleBar[1];
 
 void setMenuType(MENU_TYPE type);
 MENU_TYPE getMenuType(void);
 
-void reminderSetUnConnected(void);
 void reminderMessage(int16_t inf, SYS_STATUS status);
 void volumeReminderMessage(int16_t inf, SYS_STATUS status);
 void notificationDot(void);
@@ -180,10 +180,13 @@ void busyIndicator(SYS_STATUS status);
 
 MENUITEMS *getCurMenuItems(void);
 LISTITEMS *getCurListItems(void);
+GUI_POINT getIconStartPoint(int index);
 
 void GUI_RestoreColorDefault(void);
 uint8_t *labelGetAddress(const LABEL * label);
-void setMenu(MENU_TYPE menu_type, LABEL * title, uint16_t rectCount, const GUI_RECT * menuRect, void(*action_redraw)(uint8_t position, uint8_t is_press),  void (* menu_redraw)(void));
+void setMenu(MENU_TYPE menu_type, LABEL * title, uint16_t rectCount, const GUI_RECT * menuRect,
+             void(*action_redraw)(uint8_t position, uint8_t is_press),
+             void (*menu_redraw)(void));
 void menuDrawItem (const ITEM * menuItem, uint8_t position);
 void menuDrawIconOnly(const ITEM *item, uint8_t position);
 void menuDrawIconText(const ITEM *item, uint8_t position);
@@ -191,7 +194,7 @@ void menuDrawListItem(const LISTITEM *item, uint8_t position);
 void menuRefreshListPage(void);
 void menuDrawTitle(const uint8_t *content);  //(const MENUITEMS * menuItems);
 void menuReDrawCurTitle(void);
-void menuDrawPage (const MENUITEMS * menuItems);
+void menuDrawPage(const MENUITEMS * menuItems);
 void menuDrawListPage(const LISTITEMS *listItems);
 
 void showLiveInfo(uint8_t index, const LIVE_INFO * liveicon, const ITEM * item);
@@ -201,8 +204,15 @@ void displayExhibitValue(const char * valueStr);
 void itemDrawIconPress(uint8_t position, uint8_t is_press);
 void itemDrawIconPress_PS(uint8_t position, uint8_t is_press);
 KEY_VALUES menuKeyGetValue(void);
-GUI_POINT getIconStartPoint(int index);
 
+// Smart home
+#ifdef SMART_HOME
+  #define LONG_TOUCH (MODE_SWITCHING_INTERVAL / 3)  // keep it lower than MODE_SWITCHING_INTERVAL
+
+  void loopCheckBackPress(void);
+#endif
+
+void menuDummy(void);
 void loopBackEnd(void);
 void loopFrontEnd(void);
 void loopProcess(void);

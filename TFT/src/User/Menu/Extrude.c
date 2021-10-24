@@ -59,18 +59,16 @@ void menuExtrude(void)
   menuDrawPage(&extrudeItems);
   extruderReDraw(curExtruder_index, extrKnownCoord, false);
 
-  #if LCD_ENCODER_SUPPORT
-    encoderPosition = 0;
-  #endif
-
   heatSetUpdateSeconds(TEMPERATURE_QUERY_FAST_SECONDS);
 
-  while (infoMenu.menu[infoMenu.cur] == menuExtrude)
+  while (MENU_IS(menuExtrude))
   {
     key_num = menuKeyGetValue();
+
     switch (key_num)
     {
       case KEY_ICON_0:
+      case KEY_DECREASE:
         extrNewCoord -= extlenSteps[extlenSteps_index];
         break;
 
@@ -79,12 +77,12 @@ void menuExtrude(void)
         float val = editFloatValue(extlenSteps[COUNT(extlenSteps) - 1] * -1, extlenSteps[COUNT(extlenSteps) - 1], 0, 0);
         extrNewCoord += val;
 
-        menuDrawPage(&extrudeItems);
         extruderReDraw(curExtruder_index, extrKnownCoord, false);
         break;
       }
 
       case KEY_ICON_3:
+      case KEY_INCREASE:
         extrNewCoord += extlenSteps[extlenSteps_index];
         break;
 
@@ -92,12 +90,11 @@ void menuExtrude(void)
         if (infoSettings.ext_count > 1)
         {
           curExtruder_index = (curExtruder_index + 1) % infoSettings.ext_count;
-
           extruderReDraw(curExtruder_index, extrKnownCoord, false);
         }
         else
         {
-          infoMenu.menu[++infoMenu.cur] = menuHeat;
+          OPEN_MENU(menuHeat);
           eAxisBackup.backedUp = false;  // exiting from Extrude menu (user might never come back by "Back" long press in Heat menu)
         }
         break;
@@ -118,18 +115,11 @@ void menuExtrude(void)
 
       case KEY_ICON_7:
         cooldownTemperature();
-        infoMenu.cur--;
+        CLOSE_MENU();
         eAxisBackup.backedUp = false;  // exiting from Extrude menu, no need for it anymore
         break;
 
       default:
-        #if LCD_ENCODER_SUPPORT
-          if (encoderPosition)
-          {
-            extrNewCoord += extlenSteps[extlenSteps_index] * encoderPosition;
-            encoderPosition = 0;
-          }
-        #endif
         break;
     }
 

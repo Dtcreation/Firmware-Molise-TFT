@@ -84,8 +84,8 @@ void menuInfo(void)
 {
   char buf[128];
 
-  const char *const hardware = "BIGTREETECH_" HARDWARE_VERSION;
-  const char *const firmware = HARDWARE_VERSION"." STRINGIFY(SOFTWARE_VERSION) " " __DATE__;
+  const char *const hardware = HARDWARE_MANUFACTURER HARDWARE_VERSION;
+  const char *const firmware = SOFTWARE_MANUFACTURER STRINGIFY(SOFTWARE_VERSION) " " __DATE__;
 
   GUI_Clear(infoSettings.bg_color);
   GUI_SetColor(GRAY);
@@ -158,11 +158,11 @@ void menuInfo(void)
   GUI_DispStringInRect(20, LCD_HEIGHT - (BYTE_HEIGHT*2), LCD_WIDTH-20, LCD_HEIGHT, textSelect(LABEL_TOUCH_TO_EXIT));
 
   while (!isPress()) loopBackEnd();
-  BUZZER_PLAY(sound_keypress);
+  BUZZER_PLAY(SOUND_KEYPRESS);
   while (isPress()) loopBackEnd();
 
   GUI_RestoreColorDefault();
-  infoMenu.cur--;
+  CLOSE_MENU();
 }
 
 void menuSettings(void)
@@ -171,34 +171,34 @@ void menuSettings(void)
 
   menuDrawPage(&settingsItems);
 
-  while (infoMenu.menu[infoMenu.cur] == menuSettings)
+  while (MENU_IS(menuSettings))
   {
     key_num = menuKeyGetValue();
     switch (key_num)
     {
       case KEY_ICON_0:
-        infoMenu.menu[++infoMenu.cur] = menuScreenSettings;
+        OPEN_MENU(menuScreenSettings);
         break;
 
       case KEY_ICON_1:
         mustStoreCmd("M503 S0\n");
-        infoMenu.menu[++infoMenu.cur] = menuMachineSettings;
+        OPEN_MENU(menuMachineSettings);
         break;
 
       case KEY_ICON_2:
-        infoMenu.menu[++infoMenu.cur] = menuFeatureSettings;
+        OPEN_MENU(menuFeatureSettings);
         break;
 
       case KEY_ICON_3:
-        infoMenu.menu[++infoMenu.cur] = menuInfo;
+        OPEN_MENU(menuInfo);
         break;
 
       case KEY_ICON_4:
-        infoMenu.menu[++infoMenu.cur] = menuConnectionSettings;
+        OPEN_MENU(menuConnectionSettings);
         break;
 
       case KEY_ICON_7:
-        infoMenu.cur--;
+        CLOSE_MENU();
         break;
 
       default:

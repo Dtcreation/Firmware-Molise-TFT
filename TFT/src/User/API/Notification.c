@@ -22,7 +22,8 @@ bool _toastRunning = false;
 //Add new message to toast notification queue
 void addToast(DIALOG_TYPE style, char * text)
 {
-  wakeLCD();
+  LCD_WAKE();
+
   TOAST t;
   strncpy(t.text, text, TOAST_MSG_LENGTH);
   t.text[TOAST_MSG_LENGTH - 1] = 0;  //ensure string ends with null terminator
@@ -66,19 +67,19 @@ void drawToast(bool redraw)
     {
       GUI_SetColor(MAT_RED);
       icon = IconCharSelect(CHARICON_ERROR);
-      cursound = sound_error;
+      cursound = SOUND_ERROR;
     }
     else if (toastlist[curToastDisplay].style == DIALOG_TYPE_SUCCESS)
     {
       GUI_SetColor(MAT_GREEN);
       icon = IconCharSelect(CHARICON_OK_ROUND);
-      cursound = sound_success;
+      cursound = SOUND_SUCCESS;
     }
     else
     {
       GUI_SetColor(MAT_BLUE);
       icon = IconCharSelect(CHARICON_INFO);
-      cursound = sound_toast;
+      cursound = SOUND_TOAST;
     }
 
     if (cursound >= 0 && !redraw)
@@ -131,7 +132,7 @@ void loopToast(void)
 //Add new message to notification queue
 void addNotification(DIALOG_TYPE style, char *title, char *text, bool ShowDialog)
 {
-  wakeLCD();
+  LCD_WAKE();
 
   if (nextMsgIndex > MAX_MSG_COUNT - 1)
   {
@@ -150,7 +151,7 @@ void addNotification(DIALOG_TYPE style, char *title, char *text, bool ShowDialog
   strncpy(msglist[nextMsgIndex].title, title, MAX_MSG_TITLE_LENGTH);
   msglist[nextMsgIndex].title[MAX_MSG_TITLE_LENGTH - 1] = 0;  //ensure string ends with null terminator
 
-  if (ShowDialog && infoMenu.menu[infoMenu.cur] != menuNotification)
+  if (ShowDialog && MENU_IS_NOT(menuNotification))
     popupReminder(style, (uint8_t *)title, (uint8_t *)msglist[nextMsgIndex].text);
 
   if (nextMsgIndex < MAX_MSG_COUNT) nextMsgIndex += 1;  //(nextMsgIndex + 1) % MAX_MSG_COUNT;
@@ -204,9 +205,9 @@ void titleBarPress(void)
 {
   if (getMenuType() == MENU_TYPE_ICON || getMenuType() == MENU_TYPE_LISTVIEW)
   {
-    if (infoMenu.menu[infoMenu.cur] != menuNotification)
+    if (MENU_IS_NOT(menuNotification))
     {
-      infoMenu.menu[++infoMenu.cur] = menuNotification;
+      OPEN_MENU(menuNotification);
     }
   }
 }

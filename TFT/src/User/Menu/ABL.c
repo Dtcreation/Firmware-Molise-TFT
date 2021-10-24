@@ -35,7 +35,7 @@ void ablUpdateStatus(bool succeeded)
 
   if (succeeded)  // if bed leveling process successfully terminated, allow to save to EEPROM
   {
-    BUZZER_PLAY(sound_success);
+    BUZZER_PLAY(SOUND_SUCCESS);
 
     if (savingEnabled && infoMachineSettings.EEPROM == 1)
     {
@@ -50,7 +50,7 @@ void ablUpdateStatus(bool succeeded)
   }
   else  // if bed leveling process failed, provide an error dialog
   {
-    BUZZER_PLAY(sound_error);
+    BUZZER_PLAY(SOUND_ERROR);
 
     popupReminder(DIALOG_TYPE_ERROR, tempTitle.index, LABEL_PROCESS_ABORTED);
   }
@@ -129,7 +129,7 @@ void menuUBLSaveLoad(void)
 
   menuDrawPage(&UBLSaveLoadItems);
 
-  while (infoMenu.menu[infoMenu.cur] == menuUBLSaveLoad)
+  while (MENU_IS(menuUBLSaveLoad))
   {
     key_num = menuKeyGetValue();
     switch (key_num)
@@ -155,7 +155,7 @@ void menuUBLSaveLoad(void)
         else
         {
           ublSlotSaved = false;
-          infoMenu.cur--;
+          CLOSE_MENU();
         }
         break;
 
@@ -170,11 +170,11 @@ void menuUBLSaveLoad(void)
 void menuUBLSave(void)
 {
   ublIsSaving = true;
-  infoMenu.menu[++infoMenu.cur] = menuUBLSaveLoad;
+  OPEN_MENU(menuUBLSaveLoad);
 }
 
 void menuUBLLoad(void)
 {
   ublIsSaving = false;
-  infoMenu.menu[++infoMenu.cur] = menuUBLSaveLoad;
+  OPEN_MENU(menuUBLSaveLoad);
 }

@@ -6,7 +6,7 @@ static uint8_t curUnit_index = 0;
 // Init mesh point
 static inline void meshInitPoint(uint16_t col, uint16_t row, float value)
 {
-//  probeHeightEnable();  // temporary disable software endstops
+//  probeHeightEnable();  // temporary disable software endstops and save ABL state
 
   // Z offset gcode sequence start
   mustStoreCmd("G42 I%d J%d\n", col, row);  // move nozzle to X and Y coordinates corresponding to the column and row in the bed leveling mesh grid
@@ -23,7 +23,7 @@ static inline void meshResetPoint(void)
 
   probeHeightAbsolute();  // set absolute position mode
 
-//  probeHeightDisable();  // restore original software endstops state
+//  probeHeightDisable();  // restore original software endstops state and ABL state
 }
 
 void meshDraw(uint16_t col, uint16_t row, float val)
@@ -40,11 +40,11 @@ void meshDraw(uint16_t col, uint16_t row, float val)
   {
     sprintf(tempstr, "I:%d J:%d ZH:%.3f  ", col, row, val - infoSettings.level_z_pos);
     sprintf(tempstr3, "Shim:%.3f", infoSettings.level_z_pos);
-    GUI_SetColor(infoSettings.sd_reminder_color);
+    GUI_SetColor(infoSettings.status_color);
   }
 
   GUI_DispString(exhibitRect.x0, exhibitRect.y1 - BYTE_HEIGHT, (uint8_t *) tempstr3);
-  GUI_SetColor(infoSettings.sd_reminder_color);
+  GUI_SetColor(infoSettings.status_color);
   GUI_DispString(exhibitRect.x0, exhibitRect.y0, (uint8_t *) tempstr);
 
   sprintf(tempstr2, "  %.3f  ", val);
@@ -101,26 +101,23 @@ float menuMeshTuner(uint16_t col, uint16_t row, float value)
   menuDrawPage(&meshItems);
   meshDraw(col, row, now);
 
-  #if LCD_ENCODER_SUPPORT
-    encoderPosition = 0;
-  #endif
-
   while (true)
   {
     unit = moveLenSteps[curUnit_index];
-
     curValue = coordinateGetAxisActual(Z_AXIS);
-
     key_num = menuKeyGetValue();
+
     switch (key_num)
     {
       // decrease Z height
       case KEY_ICON_0:
+      case KEY_DECREASE:
         probeHeightMove(unit, -1);
         break;
 
       // increase Z height
       case KEY_ICON_3:
+      case KEY_INCREASE:
         probeHeightMove(unit, 1);
         break;
 
@@ -153,14 +150,6 @@ float menuMeshTuner(uint16_t col, uint16_t row, float value)
         break;
 
       default:
-        #if LCD_ENCODER_SUPPORT
-          if (encoderPosition)
-          {
-            probeHeightMove(unit, encoderPosition < 0 ? -1 : 1);
-
-            encoderPosition = 0;
-          }
-        #endif
         break;
     }
 
@@ -174,7 +163,7 @@ float menuMeshTuner(uint16_t col, uint16_t row, float value)
 
     loopProcess();
 
-    if (infoMenu.menu[infoMenu.cur] != menuMeshEditor)
+    if (MENU_IS_NOT(menuMeshEditor))
     {
       infoMenu.menu[infoMenu.cur]();
 

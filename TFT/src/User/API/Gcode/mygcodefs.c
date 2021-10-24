@@ -1,5 +1,6 @@
 #include "mygcodefs.h"
 #include "includes.h"
+#include "RRFM20Parser.hpp"
 
 bool mountGcodeSDCard(void)
 {
@@ -11,7 +12,17 @@ bool mountGcodeSDCard(void)
 SENDING:M21
 echo:SD card ok
 */
+  if (infoMachineSettings.firmwareType == FW_REPRAPFW)
+  {
+    return true;
+  }
   return request_M21();
+}
+
+static inline void rrfScanPrintFilesGcodeFs(void)
+{
+  // TODO detect files_sort_by and set with_ts appropriately once M20 S3 works
+  request_M20_rrf(infoFile.title, false, parseJobListResponse);
 }
 
 //static uint32_t date = 0;
@@ -35,6 +46,11 @@ bool scanPrintFilesGcodeFs(void)
 {
   clearInfoFile();
 
+  if (infoMachineSettings.firmwareType == FW_REPRAPFW)
+  {
+    rrfScanPrintFilesGcodeFs();
+    return true;
+  }
   char *ret = request_M20();
   char *data = malloc(strlen(ret) + 1);
   strcpy(data, ret);
@@ -58,7 +74,7 @@ bool scanPrintFilesGcodeFs(void)
       if (infoFile.fileCount >= FILE_NUM)
         continue;  // Gcode max number is FILE_NUM
 
-      if (infoMachineSettings.long_filename_support == ENABLED)
+      if (infoMachineSettings.longFilename == ENABLED)
       {
         char *Pstr_tmp = strrchr(line, ' ');
         if (Pstr_tmp != NULL)

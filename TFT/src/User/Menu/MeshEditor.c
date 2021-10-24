@@ -55,8 +55,6 @@ typedef struct
   float bDelta;                                            // bEnd - bStart
 
   MESH_DATA_STATUS status;                                 // current status of dataOrig/data
-
-  float ablState;
   uint16_t parsedRows;
 
   uint16_t colsToSkip;
@@ -88,6 +86,8 @@ typedef enum
   ME_KEY_NEXT,
   ME_KEY_DOWN,
   ME_KEY_NUM,                                              // number of keys
+  ME_KEY_INCREASE = KEY_INCREASE,
+  ME_KEY_DECREASE = KEY_DECREASE,
   ME_KEY_IDLE = IDLE_TOUCH,
 } MESH_KEY_VALUES;
 
@@ -201,7 +201,6 @@ const MESH_DATA_FORMAT meshDataFormat[] = {
   {0, 1, 1, "Bed Level Correction Matrix:"},               // ABL Linear or 3-Point
 };
 
-void (*meshSaveCallbackPtr)(void) = NULL;
 static MESH_DATA *meshData = NULL;
 
 void meshInitData(void)
@@ -236,11 +235,7 @@ void meshInitData(void)
   meshData->bDelta = (float) (meshData->bEnd) - meshData->bStart;
 
   meshData->status = ME_DATA_IDLE;
-
-  meshData->ablState = getParameter(P_ABL_STATE, 0);
   meshData->parsedRows = 0;
-
-  meshSaveCallbackPtr = NULL;
 }
 
 static inline void meshAllocData(void)
@@ -249,14 +244,9 @@ static inline void meshAllocData(void)
     return;
 
   meshData = (MESH_DATA *) malloc(sizeof(MESH_DATA));
-
   meshInitData();
 
-  probeHeightEnable();                                     // temporary disable software endstops
-
-  // if enabled, always disable ABL before editing a mesh
-  if (meshData->ablState == ENABLED)
-    storeCmd(infoMachineSettings.firmwareType != FW_REPRAPFW ? "M420 S0\n" : "G29 S2\n");
+  probeHeightEnable();                                     // temporary disable software endstops and save ABL state
 }
 
 void meshDeallocData(void)
@@ -264,15 +254,10 @@ void meshDeallocData(void)
   if (meshData == NULL)
     return;
 
-  // restore original ABL state
-  if (meshData->ablState == ENABLED)
-    storeCmd(infoMachineSettings.firmwareType != FW_REPRAPFW ? "M420 S1\n" : "G29 S1\n");
-
   free(meshData);
-
   meshData = NULL;
 
-  probeHeightDisable();                                    // restore original software endstops state
+  probeHeightDisable();                                    // restore original software endstops state and ABL state
 }
 
 static inline bool processKnownDataFormat(char *dataRow)
@@ -295,8 +280,6 @@ static inline bool processKnownDataFormat(char *dataRow)
     meshData->rowsToSkip = meshDataFormat[i].rowsToSkip;
     meshData->rowsInverted = meshDataFormat[i].rowsInverted;
 
-    meshSaveCallbackPtr = saveEepromSettings;
-
     switch (infoMachineSettings.leveling)
     {
       case BL_BBL:
@@ -304,8 +287,6 @@ static inline bool processKnownDataFormat(char *dataRow)
         break;
 
       case BL_UBL:
-        meshSaveCallbackPtr = menuUBLSave;
-
         strcpy(meshData->saveTitle, (char *)textSelect(LABEL_ABL_SETTINGS_UBL));
         break;
 
@@ -324,8 +305,10 @@ static inline bool processKnownDataFormat(char *dataRow)
 
 void meshSaveCallback(void)
 {
-  if (meshSaveCallbackPtr != NULL)
-    meshSaveCallbackPtr();
+  if (infoMachineSettings.leveling == BL_UBL)
+    menuUBLSave();
+  else if (infoMachineSettings.leveling != BL_DISABLED)
+    saveEepromSettings();
 
   meshDeallocData();                                       // deallocate mesh data. It forces data reloading during Mesh Editor menu reloading
 }
@@ -830,7 +813,7 @@ void meshUpdateData(char *dataRow)
 
     popupReminder(DIALOG_TYPE_ERROR, LABEL_MESH_EDITOR, (uint8_t *) tempMsg);
 
-    infoMenu.cur--;                                        // exit from mesh editor menu. it avoids to loop in case of persistent error
+    CLOSE_MENU();                                          // exit from mesh editor menu. it avoids to loop in case of persistent error
 
     meshDeallocData();                                     // deallocate mesh data
   }
@@ -842,30 +825,24 @@ void menuMeshEditor(void)
   bool oldStatus, curStatus;
   uint16_t oldIndex, curIndex;
   float origValue, curValue;
-  bool forceHoming;
   bool forceExit;
 
   meshAllocData();                                         // allocates and initialize mesh data if not already allocated and initialized
 
   oldStatus = curStatus = meshGetStatus();                 // after allocation, we acces data status etc...
   oldIndex = curIndex = meshGetIndex();
-  forceHoming = true;
   forceExit = false;
 
   mustStoreCmd("M420 V1 T1\n");                            // retrieve the mesh data
 
   meshDrawMenu();
 
-  #if LCD_ENCODER_SUPPORT
-    encoderPosition = 0;
-  #endif
-
-  while (infoMenu.menu[infoMenu.cur] == menuMeshEditor)
+  while (MENU_IS(menuMeshEditor))
   {
     curStatus = meshGetStatus();                           // always load current status
     curIndex = meshGetIndex();                             // always load current index
-
     key_num = menuKeyGetValue();
+
     switch (key_num)
     {
       case ME_KEY_UP:
@@ -877,23 +854,20 @@ void menuMeshEditor(void)
         break;
 
       case ME_KEY_PREV:
+      case ME_KEY_DECREASE:
         curIndex = meshSetIndex(curIndex - 1);
         break;
 
       case ME_KEY_NEXT:
+      case ME_KEY_INCREASE:
         curIndex = meshSetIndex(curIndex + 1);
         break;
 
       case ME_KEY_EDIT:
         if (meshGetStatus())
         {
-          if (forceHoming)
-          {
-            forceHoming = false;
-
-            mustStoreCmd("G28\n");                         // only the first time, home the printer
-            probeHeightStop(infoSettings.z_raise_probing); // raise nozzle
-          }
+          if (coordinateIsKnown() == false)
+            probeHeightHome();                             // home, disable ABL and raise nozzle
 
           curValue = menuMeshTuner(meshGetCol(), meshGetJ(), meshGetValue(meshGetIndex()));
           meshSetValue(curValue);
@@ -916,10 +890,7 @@ void menuMeshEditor(void)
         break;
 
       case ME_KEY_HOME:
-        forceHoming = false;
-
-        mustStoreCmd("G28\n");                             // force homing (e.g. if steppers are disarmed)
-        probeHeightStop(infoSettings.z_raise_probing);     // raise nozzle
+        probeHeightHome();                                 // force homing (e.g. if steppers are disarmed)
         break;
 
       case ME_KEY_SAVE:
@@ -929,18 +900,10 @@ void menuMeshEditor(void)
       case ME_KEY_OK:
         forceExit = true;
 
-        infoMenu.cur--;
+        CLOSE_MENU();
         break;
 
       default:
-        #if LCD_ENCODER_SUPPORT
-          if (encoderPosition)
-          {
-            curIndex = meshSetIndex(curIndex + encoderPosition);
-
-            encoderPosition = 0;
-          }
-        #endif
         break;
     }
 

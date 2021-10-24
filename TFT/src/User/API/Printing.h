@@ -9,17 +9,9 @@ extern "C" {
 #include "variants.h"
 #include "ff.h"
 
-#ifndef M27_WATCH_OTHER_SOURCES
-  #define M27_WATCH_OTHER_SOURCES false
-#endif
-
-#ifndef M27_REFRESH
-  #define M27_REFRESH 3
-#endif
-
 #ifdef RAPID_SERIAL_COMM
   #define RAPID_SERIAL_LOOP() loopBackEnd()
-  #define RAPID_PRINTING_COMM() if (isPrinting() == true && infoSettings.serial_alwaysOn != 1) {loopBackEnd();}
+  #define RAPID_PRINTING_COMM() if (isPrinting() == true && infoSettings.serial_always_on != 1) {loopBackEnd();}
 #else
   #define RAPID_SERIAL_LOOP()
   #define RAPID_PRINTING_COMM()
@@ -56,6 +48,9 @@ void breakAndContinue(void);
 void resumeAndPurge(void);
 void resumeAndContinue(void);
 
+void setPrintExpectedTime(uint32_t expectedTime);
+uint32_t getPrintExpectedTime(void);
+
 void setPrintTime(uint32_t elapsedTime);
 uint32_t getPrintTime(void);
 void getPrintTimeDetail(uint8_t * hour, uint8_t * min, uint8_t * sec);
@@ -64,6 +59,12 @@ void setPrintRemainingTime(int32_t remainingTime);  // used for M73 Rxx and M117
 void parsePrintRemainingTime(char * buffer);        // used for M117 Time Left xx
 uint32_t getPrintRemainingTime();
 void getPrintRemainingTimeDetail(uint8_t * hour, uint8_t * min, uint8_t * sec);
+
+void setPrintLayerNumber(uint16_t layerNumber);
+uint16_t getPrintLayerNumber();
+
+void setPrintLayerCount(uint16_t layerCount);
+uint16_t getPrintLayerCount();
 
 uint32_t getPrintSize(void);
 uint32_t getPrintCur(void);
